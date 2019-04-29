@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import base64
 import re
 import os
 import subprocess
@@ -166,7 +165,7 @@ def get_ingress_address(endpoint_name):
     # Fan typically likes to use IPs in the 240.0.0.0/4 block, so we'll
     # prioritize those last. Not technically correct, but good enough.
     try:
-        sort_key = lambda a: int(a.partition('.')[0]) >= 240
+        sort_key = lambda a: int(a.partition('.')[0]) >= 240  # noqa: E731
         addresses = sorted(addresses, key=sort_key)
     except Exception:
         hookenv.log(traceback.format_exc())
@@ -435,7 +434,7 @@ def write_gcp_snap_config(component):
         daemon_env_path.write_text(daemon_env)
 
 
-def write_openstack_snap_config(component):
+def generate_openstack_cloud_config():
     # openstack requires additional credentials setup
     openstack = endpoint_from_flag('endpoint.openstack.ready')
 
@@ -449,17 +448,14 @@ def write_openstack_snap_config(component):
         'domain-name = {}'.format(openstack.user_domain_name),
     ]
     if openstack.endpoint_tls_ca:
-        cloud_endpoint_ca_path = _cloud_endpoint_ca_path(component)
-        cloud_endpoint_ca_path.write_text(base64.b64decode(
-            openstack.endpoint_tls_ca
-        ).decode('utf-8'))
-        lines.append('ca-file = {}'.format(str(cloud_endpoint_ca_path)))
-    if any([openstack.subnet_id,
-            openstack.floating_network_id,
-            openstack.lb_method,
-            openstack.manage_security_groups]):
-        lines.append('')
-        lines.append('[LoadBalancer]')
+        lines.append('ca-file = /etc/kubernetes/openstack-ca.cert')
+
+    lines.extend([
+        '',
+        '[LoadBalancer]',
+        'use-octavia = true',
+    ])
+
     if openstack.subnet_id:
         lines.append('subnet-id = {}'.format(openstack.subnet_id))
     if openstack.floating_network_id:
@@ -484,9 +480,7 @@ def write_openstack_snap_config(component):
     if openstack.ignore_volume_az is not None:
         lines.append('ignore-volume-az = {}'.format(
             openstack.ignore_volume_az))
-
-    comp_cloud_config_path = cloud_config_path(component)
-    comp_cloud_config_path.write_text(''.join('{}\n'.format(l) for l in lines))
+    return ''.join('{}\n'.format(l) for l in lines)
 
 
 def write_azure_snap_config(component):
