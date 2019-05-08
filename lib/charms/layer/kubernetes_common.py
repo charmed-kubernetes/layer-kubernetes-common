@@ -480,7 +480,7 @@ def generate_openstack_cloud_config():
     if openstack.ignore_volume_az is not None:
         lines.append('ignore-volume-az = {}'.format(
             openstack.ignore_volume_az))
-    return ''.join('{}\n'.format(l) for l in lines)
+    return '\n'.join(lines) + '\n'
 
 
 def write_azure_snap_config(component):
