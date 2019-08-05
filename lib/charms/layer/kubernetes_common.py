@@ -275,7 +275,7 @@ def get_node_name():
 def create_kubeconfig(kubeconfig, server, ca, key=None, certificate=None,
                       user='ubuntu', context='juju-context',
                       cluster='juju-cluster', password=None, token=None,
-                      keystone=False):
+                      keystone=False, aws_iam_cluster_id=None):
     '''Create a configuration for Kubernetes based on path using the supplied
     arguments for values of the Kubernetes server, CA, key, certificate, user
     context and cluster.'''
@@ -340,6 +340,28 @@ def create_kubeconfig(kubeconfig, server, ca, key=None, certificate=None,
 """)
         with open(kubeconfig, "w") as f:
             f.write(content)
+    if aws_iam_cluster_id:
+        # create aws-iam context
+        cmd = 'kubectl config --kubeconfig={0} ' \
+              'set-context --cluster={1} ' \
+              '--user=aws-iam-user aws-iam-authenticator'
+        cmd = cmd.format(kubeconfig, cluster)
+        check_call(split(cmd.format(kubeconfig, aws_iam_cluster_id)))
+
+        # append a user for aws-iam
+        cmd = 'kubectl --kubeconfig={0} config set-credentials ' \
+              'aws-iam-user --exec-command=aws-iam-authenticator ' \
+              '--exec-arg="token" --exec-arg="-i" --exec-arg="{1}" ' \
+              '--exec-arg="-r" --exec-arg="<<insert_arn_here>>" ' \
+              '--exec-api-version=client.authentication.k8s.io/v1alpha1'
+        check_call(split(cmd.format(kubeconfig, aws_iam_cluster_id)))
+
+        # not going to use aws-iam context by default since we don't have
+        # the desired arn. This will make the config not usable if copied.
+
+        # cmd = 'kubectl config --kubeconfig={0} ' \
+        #       'use-context aws-iam-authenticator'.format(kubeconfig)
+        # check_call(split(cmd))
 
 
 def parse_extra_args(config_key):
