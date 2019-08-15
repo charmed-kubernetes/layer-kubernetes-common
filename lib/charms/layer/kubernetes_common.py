@@ -453,9 +453,14 @@ def generate_openstack_cloud_config():
     lines.extend([
         '',
         '[LoadBalancer]',
-        'use-octavia = true',
     ])
 
+    if openstack.has_octavia in (True, None):
+        # Newer integrator charm will detect whether underlying OpenStack has
+        # Octavia enabled so we can set this intelligently. If we're still
+        # related to an older integrator, though, default to assuming Octavia
+        # is available.
+        lines.append('use-octavia = true')
     if openstack.subnet_id:
         lines.append('subnet-id = {}'.format(openstack.subnet_id))
     if openstack.floating_network_id:
