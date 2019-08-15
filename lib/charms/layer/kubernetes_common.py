@@ -457,9 +457,16 @@ def write_openstack_snap_config(component):
     if any([openstack.subnet_id,
             openstack.floating_network_id,
             openstack.lb_method,
-            openstack.manage_security_groups]):
+            openstack.manage_security_groups,
+            openstack.has_octavia]):
         lines.append('')
         lines.append('[LoadBalancer]')
+    if openstack.has_octavia:
+        # Newer integrator charm will detect whether underlying OpenStack has
+        # Octavia enabled so we can set this intelligently. If we're still
+        # related to an older integrator, though, default to assuming Octavia
+        # is not available.
+        lines.append('use-octavia = true')
     if openstack.subnet_id:
         lines.append('subnet-id = {}'.format(openstack.subnet_id))
     if openstack.floating_network_id:
