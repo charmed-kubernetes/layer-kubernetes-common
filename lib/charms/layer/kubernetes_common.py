@@ -504,7 +504,7 @@ def write_azure_snap_config(component):
     }))
 
 
-def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr):
+def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr, bind_address=None):
     kube_proxy_opts = {}
     kube_proxy_opts['cluster-cidr'] = cluster_cidr
     kube_proxy_opts['kubeconfig'] = kubeproxyconfig_path
@@ -513,6 +513,8 @@ def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr):
     num_apis = len(api_servers)
     kube_proxy_opts['master'] = api_servers[get_unit_number() % num_apis]
     kube_proxy_opts['hostname-override'] = get_node_name()
+    if bind_address:
+        kube_proxy_opts['bind-address'] = bind_address
 
     if host.is_container():
         kube_proxy_opts['conntrack-max-per-core'] = '0'
