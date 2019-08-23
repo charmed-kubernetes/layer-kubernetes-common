@@ -360,23 +360,29 @@ def configure_kubernetes_service(key, service, base_args, extra_args_key):
     db = unitdata.kv()
 
     prev_args_key = key + service
-    prev_args = db.get(prev_args_key) or {}
+    prev_snap_args = db.get(prev_args_key) or {}
 
     extra_args = parse_extra_args(extra_args_key)
 
     args = {}
-    for arg in prev_args:
-        # remove previous args by setting to null
-        args[arg] = 'null'
-    for k, v in base_args.items():
-        args[k] = v
-    for k, v in extra_args.items():
-        args[k] = v
+    args.update(base_args)
+    args.update(extra_args)
+    args = ['--%s="%s"' % arg for arg in args.items()]
+    args = ' '.join(args)
 
-    cmd = ['snap', 'set', service] + ['%s=%s' % item for item in args.items()]
+    snap_opts = {}
+    for arg in prev_snap_args:
+        # remove previous args by setting to null
+        snap_opts[arg] = 'null'
+    snap_opts['args'] = args
+    snap_opts = ['%s=%s' % opt for opt in snap_opts.items()]
+
+    cmd = ['snap', 'set', service] + snap_opts
     check_call(cmd)
 
-    db.set(prev_args_key, args)
+    # Now that we've started doing snap configuration through the "args"
+    # option, we should never need to clear previous args again.
+    db.set(prev_args_key, {})
 
 
 def _snap_common_path(component):
@@ -504,7 +510,8 @@ def write_azure_snap_config(component):
     }))
 
 
-def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr, bind_address=None):
+def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr,
+                         bind_address=None):
     kube_proxy_opts = {}
     kube_proxy_opts['cluster-cidr'] = cluster_cidr
     kube_proxy_opts['kubeconfig'] = kubeproxyconfig_path
