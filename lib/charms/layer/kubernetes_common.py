@@ -345,8 +345,7 @@ def create_kubeconfig(kubeconfig, server, ca, key=None, certificate=None,
         cmd = 'kubectl config --kubeconfig={0} ' \
               'set-context --cluster={1} ' \
               '--user=aws-iam-user aws-iam-authenticator'
-        cmd = cmd.format(kubeconfig, cluster)
-        check_call(split(cmd.format(kubeconfig, aws_iam_cluster_id)))
+        check_call(split(cmd.format(kubeconfig, cluster)))
 
         # append a user for aws-iam
         cmd = 'kubectl --kubeconfig={0} config set-credentials ' \
