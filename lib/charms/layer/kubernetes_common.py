@@ -388,6 +388,16 @@ def configure_kubernetes_service(key, service, base_args, extra_args_key):
     args = {}
     args.update(base_args)
     args.update(extra_args)
+
+    # CIS benchmark action may inject kv config to pass failing tests. Merge
+    # these after the func args as they should take precedence.
+    cis_args_key = 'cis-' + service
+    cis_args = db.get(cis_args_key) or {}
+    args.update(cis_args)
+
+    # Remove any args with 'None' values (all k8s args are 'k=v') and
+    # construct an arg string for use by 'snap set'.
+    args = {k: v for k, v in args.items() if v is not None}
     args = ['--%s="%s"' % arg for arg in args.items()]
     args = ' '.join(args)
 
