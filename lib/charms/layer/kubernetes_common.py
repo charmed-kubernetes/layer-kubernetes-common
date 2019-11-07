@@ -538,6 +538,7 @@ def write_azure_snap_config(component):
         'vnetResourceGroup': azure.vnet_resource_group,
         'subnetName': azure.subnet_name,
         'securityGroupName': azure.security_group_name,
+        'loadBalancerSku': 'standard'
     }))
 
 
