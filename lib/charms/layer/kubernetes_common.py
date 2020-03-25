@@ -200,17 +200,17 @@ def arch():
 
 
 def get_service_ip(service, namespace="kube-system", errors_fatal=True):
-    cmd = "kubectl get service --namespace {} {} --output json".format(
-        namespace, service)
-    if errors_fatal:
-        output = check_output(cmd, shell=True).decode()
-    else:
-        try:
-            output = check_output(cmd, shell=True).decode()
-        except CalledProcessError:
+    try:
+        output = kubectl('get', 'service', '--namespace', namespace, service,
+                         '--output', 'json')
+    except CalledProcessError:
+        if errors_fatal:
+            raise
+        else:
             return None
-    svc = json.loads(output)
-    return svc['spec']['clusterIP']
+    else:
+        svc = json.loads(output.decode())
+        return svc['spec']['clusterIP']
 
 
 def kubectl(*args):
