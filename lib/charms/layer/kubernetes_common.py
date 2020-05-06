@@ -483,6 +483,7 @@ def generate_openstack_cloud_config():
         'password = {}'.format(openstack.password),
         'tenant-name = {}'.format(openstack.project_name),
         'domain-name = {}'.format(openstack.user_domain_name),
+        'tenant-domain-name = {}'.format(openstack.project_domain_name),
     ]
     if openstack.endpoint_tls_ca:
         lines.append('ca-file = /etc/config/endpoint-ca.cert')
