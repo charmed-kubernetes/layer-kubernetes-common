@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ipaddress
 import re
 import os
 import subprocess
@@ -21,6 +22,7 @@ import hashlib
 import json
 import traceback
 
+from operator import attrgetter
 from pathlib import Path
 from subprocess import check_output, check_call
 from socket import gethostname, getfqdn
@@ -555,9 +557,14 @@ def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr,
     kube_proxy_opts['hostname-override'] = get_node_name()
     if bind_address:
         kube_proxy_opts['bind-address'] = bind_address
+    elif is_ipv6(cluster_cidr):
+        kube_proxy_opts['bind-address'] = '::'
 
     if host.is_container():
         kube_proxy_opts['conntrack-max-per-core'] = '0'
+
+    if ',' in cluster_cidr:
+        kube_proxy_opts['feature-gates'] = "IPv6DualStack=true"
 
     configure_kubernetes_service(configure_prefix, 'kube-proxy',
                                  kube_proxy_opts, 'proxy-extra-args')
@@ -565,3 +572,47 @@ def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr,
 
 def get_unit_number():
     return int(hookenv.local_unit().split('/')[1])
+
+
+def cluster_cidr():
+    '''Return the cluster CIDR provided by the CNI'''
+    cni = endpoint_from_flag('cni.available')
+    if not cni:
+        return None
+    config = hookenv.config()
+    if 'default-cni' in config:
+        # master
+        default_cni = config['default-cni']
+    else:
+        # worker
+        kube_control = endpoint_from_flag('kube-control.dns.available')
+        if not kube_control:
+            return None
+        default_cni = kube_control.get_default_cni()
+    return cni.get_config(default=default_cni)['cidr']
+
+
+def is_dual_stack(cidrs):
+    '''Detect IPv4/IPv6 dual stack from CIDRs'''
+    return {net.version for net in get_networks(cidrs)} == {4, 6}
+
+
+def is_ipv6(cidrs):
+    '''Detect IPv6 from CIDRs'''
+    return get_ipv6_network(cidrs) is not None
+
+
+def get_networks(cidrs):
+    '''Convert a comma-separated list of CIDRs to a list of networks.'''
+    return sorted([ipaddress.ip_interface(cidr).network
+                   for cidr in cidrs.split(',')], key=attrgetter('version'))
+
+
+def get_ipv4_network(cidrs):
+    '''Get the IPv4 network from the given CIDRs or None'''
+    return {net.version: net for net in get_networks(cidrs)}.get(4)
+
+
+def get_ipv6_network(cidrs):
+    '''Get the IPv6 network from the given CIDRs or None'''
+    return {net.version: net for net in get_networks(cidrs)}.get(6)
