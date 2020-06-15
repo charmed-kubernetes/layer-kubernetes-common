@@ -616,3 +616,8 @@ def get_ipv4_network(cidrs):
 def get_ipv6_network(cidrs):
     '''Get the IPv6 network from the given CIDRs or None'''
     return {net.version: net for net in get_networks(cidrs)}.get(6)
+
+
+def enable_ipv6_forwarding():
+    '''Enable net.ipv6.conf.all.forwarding in sysctl if it is not already.'''
+    check_call(['sysctl', 'net.ipv6.conf.all.forwarding=1'])
