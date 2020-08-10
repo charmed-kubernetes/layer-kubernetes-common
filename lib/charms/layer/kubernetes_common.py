@@ -632,7 +632,7 @@ def is_ipv6_preferred(cidrs):
 
 def get_networks(cidrs):
     '''Convert a comma-separated list of CIDRs to a list of networks.'''
-    if cidrs is None:
+    if not cidrs:
         return []
     return [ipaddress.ip_interface(cidr).network for cidr in cidrs.split(',')]
 
