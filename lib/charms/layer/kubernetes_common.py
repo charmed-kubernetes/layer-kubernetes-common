@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ipaddress
 import re
 import os
 import subprocess
@@ -171,6 +172,25 @@ def get_ingress_address(endpoint_name):
         hookenv.log(traceback.format_exc())
 
     return addresses[0]
+
+
+def get_ingress_address6(endpoint_name):
+    try:
+        network_info = hookenv.network_get(endpoint_name)
+    except NotImplementedError:
+        network_info = {}
+
+    if not network_info or 'ingress-addresses' not in network_info:
+        return None
+
+    addresses = network_info['ingress-addresses']
+
+    for addr in addresses:
+        ip_addr = ipaddress.ip_interface(addr).ip
+        if ip_addr.version == 6:
+            return str(ip_addr)
+    else:
+        return None
 
 
 def service_restart(service_name):
@@ -555,9 +575,14 @@ def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr,
     kube_proxy_opts['hostname-override'] = get_node_name()
     if bind_address:
         kube_proxy_opts['bind-address'] = bind_address
+    elif is_ipv6(cluster_cidr):
+        kube_proxy_opts['bind-address'] = '::'
 
     if host.is_container():
         kube_proxy_opts['conntrack-max-per-core'] = '0'
+
+    if is_dual_stack(cluster_cidr):
+        kube_proxy_opts['feature-gates'] = "IPv6DualStack=true"
 
     configure_kubernetes_service(configure_prefix, 'kube-proxy',
                                  kube_proxy_opts, 'proxy-extra-args')
@@ -565,3 +590,92 @@ def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr,
 
 def get_unit_number():
     return int(hookenv.local_unit().split('/')[1])
+
+
+def cluster_cidr():
+    '''Return the cluster CIDR provided by the CNI'''
+    cni = endpoint_from_flag('cni.available')
+    if not cni:
+        return None
+    config = hookenv.config()
+    if 'default-cni' in config:
+        # master
+        default_cni = config['default-cni']
+    else:
+        # worker
+        kube_control = endpoint_from_flag('kube-control.dns.available')
+        if not kube_control:
+            return None
+        default_cni = kube_control.get_default_cni()
+    return cni.get_config(default=default_cni)['cidr']
+
+
+def is_dual_stack(cidrs):
+    '''Detect IPv4/IPv6 dual stack from CIDRs'''
+    return {net.version for net in get_networks(cidrs)} == {4, 6}
+
+
+def is_ipv4(cidrs):
+    '''Detect IPv6 from CIDRs'''
+    return get_ipv4_network(cidrs) is not None
+
+
+def is_ipv6(cidrs):
+    '''Detect IPv6 from CIDRs'''
+    return get_ipv6_network(cidrs) is not None
+
+
+def is_ipv6_preferred(cidrs):
+    '''Detect if IPv6 is preffered from CIDRs'''
+    return get_networks(cidrs)[0].version == 6
+
+
+def get_networks(cidrs):
+    '''Convert a comma-separated list of CIDRs to a list of networks.'''
+    if not cidrs:
+        return []
+    return [ipaddress.ip_interface(cidr).network for cidr in cidrs.split(',')]
+
+
+def get_ipv4_network(cidrs):
+    '''Get the IPv4 network from the given CIDRs or None'''
+    return {net.version: net for net in get_networks(cidrs)}.get(4)
+
+
+def get_ipv6_network(cidrs):
+    '''Get the IPv6 network from the given CIDRs or None'''
+    return {net.version: net for net in get_networks(cidrs)}.get(6)
+
+
+def enable_ipv6_forwarding():
+    '''Enable net.ipv6.conf.all.forwarding in sysctl if it is not already.'''
+    check_call(['sysctl', 'net.ipv6.conf.all.forwarding=1'])
+
+
+def get_bind_addrs(ipv4=True, ipv6=True):
+    '''Get all global-scoped addresses that we might bind to.'''
+    try:
+        output = check_output(["ip", "-br", "addr", "show", "scope", "global"])
+    except CalledProcessError:
+        # stderr will have any details, and go to the log
+        hookenv.log('Unable to determine global addresses', hookenv.ERROR)
+        return []
+
+    ignore_interfaces = ('lxdbr', 'flannel', 'cni', 'virbr', 'docker')
+    accept_versions = set()
+    if ipv4:
+        accept_versions.add(4)
+    if ipv6:
+        accept_versions.add(6)
+
+    addrs = []
+    for line in output.decode('utf8').splitlines():
+        intf, state, *intf_addrs = line.split()
+        if state != 'UP' or any(intf.startswith(prefix)
+                                for prefix in ignore_interfaces):
+            continue
+        for addr in intf_addrs:
+            ip_addr = ipaddress.ip_interface(addr).ip
+            if ip_addr.version in accept_versions:
+                addrs.append(str(ip_addr))
+    return addrs
