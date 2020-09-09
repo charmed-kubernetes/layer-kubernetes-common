@@ -679,3 +679,31 @@ def get_bind_addrs(ipv4=True, ipv6=True):
             if ip_addr.version in accept_versions:
                 addrs.append(str(ip_addr))
     return addrs
+
+
+class InvalidVMwareHost(Exception):
+    pass
+
+
+def _get_vmware_uuid():
+    serial_id_file = '/sys/class/dmi/id/product_serial'
+    # The serial id from VMWare VMs comes in following format:
+    # VMware-42 28 13 f5 d4 20 71 61-5d b0 7b 96 44 0c cf 54
+    try:
+        with open(serial_id_file, 'r') as f:
+            serial_string = f.read().strip()
+            if "VMware-" not in serial_string:
+                hookenv.log("Unable to find VMware ID in "
+                            "product_serial: {}".format(serial_string))
+                raise InvalidVMwareHost
+            serial_string = serial_string.split(
+                "VMware-")[1].replace(" ", "").replace("-", "")
+            uuid = "%s-%s-%s-%s-%s" % (
+                serial_string[0:8], serial_string[8:12], serial_string[12:16],
+                serial_string[16:20], serial_string[20:32])
+    except IOError as err:
+        hookenv.log("Unable to read UUID from sysfs: {}".format(err))
+        uuid = 'UNKNOWN'
+
+    return uuid
+
