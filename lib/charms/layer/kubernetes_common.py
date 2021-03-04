@@ -519,6 +519,9 @@ def generate_openstack_cloud_config():
         # related to an older integrator, though, default to assuming Octavia
         # is available.
         lines.append('use-octavia = true')
+    else:
+        lines.append('use-octavia = false')
+        lines.append('lb-provider = haproxy')
     if openstack.subnet_id:
         lines.append('subnet-id = {}'.format(openstack.subnet_id))
     if openstack.floating_network_id:
