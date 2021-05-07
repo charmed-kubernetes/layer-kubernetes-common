@@ -301,22 +301,29 @@ def create_kubeconfig(kubeconfig, server, ca, key=None, certificate=None,
     context and cluster.'''
     if not key and not certificate and not password and not token:
         raise ValueError('Missing authentication mechanism.')
-
-    # token and password are mutually exclusive. Error early if both are
-    # present. The developer has requested an impossible situation.
-    # see: kubectl config set-credentials --help
-    if token and password:
+    elif key and not certificate:
+        raise ValueError('Missing certificate.')
+    elif not key and certificate:
+        raise ValueError('Missing key.')
+    elif token and password:
+        # token and password are mutually exclusive. Error early if both are
+        # present. The developer has requested an impossible situation.
+        # see: kubectl config set-credentials --help
         raise ValueError('Token and Password are mutually exclusive.')
+
+    old_kubeconfig = Path(kubeconfig)
+    new_kubeconfig = Path(str(kubeconfig) + ".new")
+
     # Create the config file with the address of the master server.
     cmd = 'kubectl config --kubeconfig={0} set-cluster {1} ' \
           '--server={2} --certificate-authority={3} --embed-certs=true'
-    check_call(split(cmd.format(kubeconfig, cluster, server, ca)))
+    check_call(split(cmd.format(new_kubeconfig, cluster, server, ca)))
     # Delete old users
     cmd = 'kubectl config --kubeconfig={0} unset users'
-    check_call(split(cmd.format(kubeconfig)))
+    check_call(split(cmd.format(new_kubeconfig)))
     # Create the credentials using the client flags.
     cmd = 'kubectl config --kubeconfig={0} ' \
-          'set-credentials {1} '.format(kubeconfig, user)
+          'set-credentials {1} '.format(new_kubeconfig, user)
 
     if key and certificate:
         cmd = '{0} --client-key={1} --client-certificate={2} '\
@@ -330,26 +337,26 @@ def create_kubeconfig(kubeconfig, server, ca, key=None, certificate=None,
     # Create a default context with the cluster.
     cmd = 'kubectl config --kubeconfig={0} set-context {1} ' \
           '--cluster={2} --user={3}'
-    check_call(split(cmd.format(kubeconfig, context, cluster, user)))
+    check_call(split(cmd.format(new_kubeconfig, context, cluster, user)))
     # Make the config use this new context.
     cmd = 'kubectl config --kubeconfig={0} use-context {1}'
-    check_call(split(cmd.format(kubeconfig, context)))
+    check_call(split(cmd.format(new_kubeconfig, context)))
     if keystone:
         # create keystone user
         cmd = 'kubectl config --kubeconfig={0} ' \
-              'set-credentials keystone-user'.format(kubeconfig)
+              'set-credentials keystone-user'.format(new_kubeconfig)
         check_call(split(cmd))
         # create keystone context
         cmd = 'kubectl config --kubeconfig={0} ' \
               'set-context --cluster={1} ' \
-              '--user=keystone-user keystone'.format(kubeconfig, cluster)
+              '--user=keystone-user keystone'.format(new_kubeconfig, cluster)
         check_call(split(cmd))
         # use keystone context
         cmd = 'kubectl config --kubeconfig={0} ' \
-              'use-context keystone'.format(kubeconfig)
+              'use-context keystone'.format(new_kubeconfig)
         check_call(split(cmd))
         # manually add exec command until kubectl can do it for us
-        with open(kubeconfig, "r") as f:
+        with open(new_kubeconfig, "r") as f:
             content = f.read()
             content = content.replace("""- name: keystone-user
   user: {}""", """- name: keystone-user
@@ -358,14 +365,14 @@ def create_kubeconfig(kubeconfig, server, ca, key=None, certificate=None,
       command: "/snap/bin/client-keystone-auth"
       apiVersion: "client.authentication.k8s.io/v1beta1"
 """)
-        with open(kubeconfig, "w") as f:
+        with open(new_kubeconfig, "w") as f:
             f.write(content)
     if aws_iam_cluster_id:
         # create aws-iam context
         cmd = 'kubectl config --kubeconfig={0} ' \
               'set-context --cluster={1} ' \
               '--user=aws-iam-user aws-iam-authenticator'
-        check_call(split(cmd.format(kubeconfig, cluster)))
+        check_call(split(cmd.format(new_kubeconfig, cluster)))
 
         # append a user for aws-iam
         cmd = 'kubectl --kubeconfig={0} config set-credentials ' \
@@ -373,14 +380,20 @@ def create_kubeconfig(kubeconfig, server, ca, key=None, certificate=None,
               '--exec-arg="token" --exec-arg="-i" --exec-arg="{1}" ' \
               '--exec-arg="-r" --exec-arg="<<insert_arn_here>>" ' \
               '--exec-api-version=client.authentication.k8s.io/v1alpha1'
-        check_call(split(cmd.format(kubeconfig, aws_iam_cluster_id)))
+        check_call(split(cmd.format(new_kubeconfig, aws_iam_cluster_id)))
 
         # not going to use aws-iam context by default since we don't have
         # the desired arn. This will make the config not usable if copied.
 
         # cmd = 'kubectl config --kubeconfig={0} ' \
-        #       'use-context aws-iam-authenticator'.format(kubeconfig)
+        #       'use-context aws-iam-authenticator'.format(new_kubeconfig)
         # check_call(split(cmd))
+    if old_kubeconfig.exists():
+        changed = new_kubeconfig.read_text() != old_kubeconfig.read_text()
+    else:
+        changed = True
+    if changed:
+        new_kubeconfig.rename(old_kubeconfig)
 
 
 def parse_extra_args(config_key):
@@ -709,4 +722,3 @@ def _get_vmware_uuid():
         uuid = 'UNKNOWN'
 
     return uuid
-
