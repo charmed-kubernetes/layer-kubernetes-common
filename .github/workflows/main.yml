@@ -20,8 +20,8 @@ jobs:
         pip install tox
     - name: Run lint
       run: tox -vve lint
-  unit-test:
-    name: Unit Tests
+  func-test:
+    name: Functional Tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -36,21 +36,6 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install tox
+          snap install kubectl --classic
       - name: Run test
-        run: tox -vve unit
-  integration-test:
-    name: Integration test with VMWare
-    runs-on: self-hosted
-    timeout-minutes: 360
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-      - name: Setup Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.8
-      - name: Install Dependencies
-        run: |
-          pip install tox
-      - name: Run test
-        run: tox -e integration
+        run: tox -vve functional
