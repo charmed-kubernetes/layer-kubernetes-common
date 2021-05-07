@@ -36,6 +36,6 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install tox
-          snap install kubectl --classic
+          sudo snap install kubectl --classic
       - name: Run test
         run: tox -vve functional
