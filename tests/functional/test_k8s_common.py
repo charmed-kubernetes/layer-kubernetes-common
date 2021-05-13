@@ -40,6 +40,7 @@ class TestCreateKubeConfig:
         cfg_data_1 = self.cfg_file.read_text()
         self.ckc(password="password")
         cfg_data_2 = self.cfg_file.read_text()
+        # Verify that calling w/ the same data keeps the same file contents.
         assert cfg_data_2 == cfg_data_1
 
     def test_efficient_updates(self):
@@ -49,6 +50,8 @@ class TestCreateKubeConfig:
         cfg_stat_2 = self.cfg_file.stat()
         self.ckc(password="new_password")
         cfg_stat_3 = self.cfg_file.stat()
+        # Verify that calling with the same data doesn't
+        # modify the file at all, but that new data does
         assert cfg_stat_1.st_mtime == cfg_stat_2.st_mtime < cfg_stat_3.st_mtime
 
     def test_aws_iam(self):
@@ -67,9 +70,13 @@ class TestCreateKubeConfig:
     def test_atomic_updates(self):
         self.ckc(password="old_password")
         with self.cfg_file.open("rt") as f:
+            # Perform a write in the middle of reading
             self.ckc(password="new_password")
+            # Read data from existing FH after new data was written
             cfg_data_1 = f.read()
+        # Read updated data
         cfg_data_2 = self.cfg_file.read_text()
+        # Verify that the in-progress read didn't get any of the new data
         assert cfg_data_1 != cfg_data_2
         assert "old_password" in cfg_data_1
         assert "new_password" in cfg_data_2
