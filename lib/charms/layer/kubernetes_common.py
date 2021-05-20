@@ -595,7 +595,7 @@ def write_azure_snap_config(component):
         json.dumps(
             {
                 "useInstanceMetadata": True,
-                "useManagedIdentityExtension": True,
+                "useManagedIdentityExtension": azure.managed_identity,
                 "subscriptionId": azure.subscription_id,
                 "resourceGroup": azure.resource_group,
                 "location": azure.resource_group_location,
@@ -604,6 +604,11 @@ def write_azure_snap_config(component):
                 "subnetName": azure.subnet_name,
                 "securityGroupName": azure.security_group_name,
                 "loadBalancerSku": "standard",
+                "securityGroupResourceGroup": azure.security_group_resource_group,
+                "loadBalancerSku": "standard",
+                "aadClientId": azure.aad_client_id,
+                "aadClientSecret": azure.aad_client_secret,
+                "tenantId": azure.tenant_id
             }
         )
     )
