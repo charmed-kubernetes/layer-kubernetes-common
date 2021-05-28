@@ -607,7 +607,7 @@ def write_azure_snap_config(component):
                 "securityGroupResourceGroup": azure.security_group_resource_group,
                 "aadClientId": azure.aad_client_id,
                 "aadClientSecret": azure.aad_client_secret,
-                "tenantId": azure.tenant_id
+                "tenantId": azure.tenant_id,
             }
         )
     )
