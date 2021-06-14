@@ -21,7 +21,12 @@ import subprocess
 import hashlib
 import json
 import traceback
+import random
+import string
+import tempfile
+import yaml
 
+from base64 import b64decode, b64encode
 from pathlib import Path
 from subprocess import check_output, check_call
 from socket import gethostname, getfqdn
@@ -29,8 +34,12 @@ from shlex import split
 from subprocess import CalledProcessError
 from charmhelpers.core import hookenv, unitdata
 from charmhelpers.core import host
+from charmhelpers.core.templating import render
 from charms.reactive import endpoint_from_flag, is_state
 from time import sleep
+
+AUTH_SECRET_NS = "kube-system"
+AUTH_SECRET_TYPE = "juju.is/token-auth"
 
 db = unitdata.kv()
 kubeclientconfig_path = "/root/.kube/config"
@@ -762,3 +771,147 @@ def _get_vmware_uuid():
         uuid = "UNKNOWN"
 
     return uuid
+
+
+def token_generator(length=32):
+    """Generate a random token for use in account tokens.
+
+    param: length - the length of the token to generate
+    """
+    alpha = string.ascii_letters + string.digits
+    token = "".join(random.SystemRandom().choice(alpha) for _ in range(length))
+    return token
+
+
+def get_secret_names():
+    """Return a dict of 'username: secret_id' for Charmed Kubernetes users."""
+    try:
+        output = kubectl(
+            "get",
+            "secrets",
+            "-n",
+            AUTH_SECRET_NS,
+            "--field-selector",
+            "type={}".format(AUTH_SECRET_TYPE),
+            "-o",
+            "json",
+        ).decode("UTF-8")
+    except (CalledProcessError, FileNotFoundError):
+        # The api server may not be up, or we may be trying to run kubelet before
+        # the snap is installed. Send back an empty dict.
+        hookenv.log("Unable to get existing secrets", level=hookenv.WARNING)
+        return {}
+
+    secrets = json.loads(output)
+    secret_names = {}
+    if "items" in secrets:
+        for secret in secrets["items"]:
+            try:
+                secret_id = secret["metadata"]["name"]
+                username_b64 = secret["data"]["username"].encode("UTF-8")
+            except (KeyError, TypeError):
+                # CK secrets will have populated 'data', but not all secrets do
+                continue
+            secret_names[b64decode(username_b64).decode("UTF-8")] = secret_id
+    return secret_names
+
+
+def generate_rfc1123(length=10):
+    """Generate a random string compliant with RFC 1123.
+
+    https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names
+
+    param: length - the length of the string to generate
+    """
+    length = 253 if length > 253 else length
+    valid_chars = string.ascii_lowercase + string.digits
+    rand_str = "".join(random.SystemRandom().choice(valid_chars) for _ in range(length))
+    return rand_str
+
+
+def create_secret(token, username, user, groups=None):
+    secrets = get_secret_names()
+    if username in secrets:
+        # Use existing secret ID if one exists for our username
+        secret_id = secrets[username]
+    else:
+        # secret IDs must be unique and rfc1123 compliant
+        sani_name = re.sub("[^0-9a-z.-]+", "-", user.lower())
+        secret_id = "auth-{}-{}".format(sani_name, generate_rfc1123(10))
+
+    # The authenticator expects tokens to be in the form user::token
+    token_delim = "::"
+    if token_delim not in token:
+        token = "{}::{}".format(user, token)
+
+    context = {
+        "type": AUTH_SECRET_TYPE,
+        "secret_name": secret_id,
+        "secret_namespace": AUTH_SECRET_NS,
+        "user": b64encode(user.encode("UTF-8")).decode("utf-8"),
+        "username": b64encode(username.encode("UTF-8")).decode("utf-8"),
+        "password": b64encode(token.encode("UTF-8")).decode("utf-8"),
+        "groups": b64encode(groups.encode("UTF-8")).decode("utf-8") if groups else "",
+    }
+    with tempfile.NamedTemporaryFile() as tmp_manifest:
+        render(
+            "cdk.auth-webhook-secret.yaml", tmp_manifest.name, context=context
+        )
+
+        if kubectl_manifest("apply", tmp_manifest.name):
+            hookenv.log("Created secret for {}".format(username))
+            return True
+        else:
+            hookenv.log("WARN: Unable to create secret for {}".format(username))
+            return False
+
+
+def get_secret_password(username):
+    """Get the password for the given user from the secret that CK created."""
+    try:
+        output = kubectl(
+            "get",
+            "secrets",
+            "-n",
+            AUTH_SECRET_NS,
+            "--field-selector",
+            "type={}".format(AUTH_SECRET_TYPE),
+            "-o",
+            "json",
+        ).decode("UTF-8")
+    except CalledProcessError:
+        # NB: apiserver probably isn't up. This can happen on boostrap or upgrade
+        # while trying to build kubeconfig files. If we need the 'admin' token during
+        # this time, pull it directly out of the kubeconfig file if possible.
+        token = None
+        if username == "admin":
+            admin_kubeconfig = Path("/root/.kube/config")
+            if admin_kubeconfig.exists():
+                with admin_kubeconfig.open("r") as f:
+                    data = yaml.safe_load(f)
+                    try:
+                        token = data["users"][0]["user"]["token"]
+                    except (KeyError, ValueError):
+                        pass
+        return token
+    except FileNotFoundError:
+        # New deployments may ask for a token before the kubectl snap is installed.
+        # Give them nothing!
+        return None
+
+    secrets = json.loads(output)
+    if "items" in secrets:
+        for secret in secrets["items"]:
+            try:
+                data_b64 = secret["data"]
+                password_b64 = data_b64["password"].encode("UTF-8")
+                username_b64 = data_b64["username"].encode("UTF-8")
+            except (KeyError, TypeError):
+                # CK authn secrets will have populated 'data', but not all secrets do
+                continue
+
+            password = b64decode(password_b64).decode("UTF-8")
+            secret_user = b64decode(username_b64).decode("UTF-8")
+            if username == secret_user:
+                return password
+    return None
