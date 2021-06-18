@@ -854,9 +854,7 @@ def create_secret(token, username, user, groups=None):
         "groups": b64encode(groups.encode("UTF-8")).decode("utf-8") if groups else "",
     }
     with tempfile.NamedTemporaryFile() as tmp_manifest:
-        render(
-            "cdk.auth-webhook-secret.yaml", tmp_manifest.name, context=context
-        )
+        render("cdk.auth-webhook-secret.yaml", tmp_manifest.name, context=context)
 
         if kubectl_manifest("apply", tmp_manifest.name):
             hookenv.log("Created secret for {}".format(username))
