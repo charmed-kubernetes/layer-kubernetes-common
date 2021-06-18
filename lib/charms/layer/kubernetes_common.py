@@ -887,12 +887,11 @@ def get_secret_password(username):
         if username == "admin":
             admin_kubeconfig = Path("/root/.kube/config")
             if admin_kubeconfig.exists():
-                with admin_kubeconfig.open("r") as f:
-                    data = yaml.safe_load(f)
-                    try:
-                        token = data["users"][0]["user"]["token"]
-                    except (KeyError, ValueError):
-                        pass
+                data = yaml.safe_load(admin_kubeconfig.read_text())
+                try:
+                    token = data["users"][0]["user"]["token"]
+                except (KeyError, IndexError, TypeError):
+                    pass
         return token
     except FileNotFoundError:
         # New deployments may ask for a token before the kubectl snap is installed.
