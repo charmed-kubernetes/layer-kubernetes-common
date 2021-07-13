@@ -159,7 +159,7 @@ def calculate_and_store_resource_checksums(checksum_prefix, snap_resources):
         db.set(key, checksum)
 
 
-def get_ingress_address(endpoint_name):
+def get_ingress_address(endpoint_name, ignore_addresses=None):
     try:
         network_info = hookenv.network_get(endpoint_name)
     except NotImplementedError:
@@ -171,6 +171,12 @@ def get_ingress_address(endpoint_name):
         return hookenv.unit_get("private-address")
 
     addresses = network_info["ingress-addresses"]
+
+    if ignore_addresses:
+        hookenv.log("ingress-addresses before filtering: {}".format(addresses))
+        iter_filter = filter(lambda item: item not in ignore_addresses, addresses)
+        addresses = list(iter_filter)
+        hookenv.log("ingress-addresses after filtering: {}".format(addresses))
 
     # Need to prefer non-fan IP addresses due to various issues, e.g.
     # https://bugs.launchpad.net/charm-gcp-integrator/+bug/1822997

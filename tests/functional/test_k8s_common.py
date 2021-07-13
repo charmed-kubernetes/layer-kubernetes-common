@@ -1,7 +1,7 @@
 from functools import partial
 
 import pytest
-
+from unittest import mock
 from charms.layer import kubernetes_common
 
 
@@ -80,3 +80,11 @@ class TestCreateKubeConfig:
         assert cfg_data_1 != cfg_data_2
         assert "old_password" in cfg_data_1
         assert "new_password" in cfg_data_2
+
+    @mock.patch("charmhelpers.core.hookenv.network_get", autospec=True)
+    def test_get_ingress_address(self, network_get):
+        network_get.return_value = {"ingress-addresses": ["1.2.3.4", "5.6.7.8"]}
+        ingress = kubernetes_common.get_ingress_address("endpoint-name")
+        assert ingress == "1.2.3.4"
+        ingress = kubernetes_common.get_ingress_address("endpoint-name", ["1.2.3.4"])
+        assert ingress == "5.6.7.8"
