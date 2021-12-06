@@ -45,6 +45,7 @@ db = unitdata.kv()
 kubeclientconfig_path = "/root/.kube/config"
 gcp_creds_env_key = "GOOGLE_APPLICATION_CREDENTIALS"
 kubeproxyconfig_path = "/root/cdk/kubeproxyconfig"
+kubelet_kubeconfig_path = "/root/cdk/kubeconfig"
 certs_dir = Path("/root/cdk")
 ca_crt_path = certs_dir / "ca.crt"
 server_crt_path = certs_dir / "server.crt"
@@ -933,3 +934,199 @@ def get_secret_password(username):
             if username == secret_user:
                 return password
     return None
+
+
+def get_node_ip():
+    """Determines the preferred NodeIP value for this node."""
+    cidr = cluster_cidr()
+    if not cidr:
+        return None
+    if is_ipv6_preferred(cidr):
+        return get_ingress_address6("kube-control")
+    else:
+        return get_ingress_address("kube-control")
+
+
+def merge_kubelet_extra_config(config, extra_config):
+    """Updates config to include the contents of extra_config. This is done
+    recursively to allow deeply nested dictionaries to be merged.
+
+    This is destructive: it modifies the config dict that is passed in.
+    """
+    for k, extra_config_value in extra_config.items():
+        if isinstance(extra_config_value, dict):
+            config_value = config.setdefault(k, {})
+            merge_kubelet_extra_config(config_value, extra_config_value)
+        else:
+            config[k] = extra_config_value
+
+
+def workaround_lxd_kernel_params():
+    """
+    Workaround for kubelet not starting in LXD when kernel params are not set
+    to the desired values.
+    """
+    if host.is_container():
+        hookenv.log("LXD detected, faking kernel params via bind mounts")
+        root_dir = "/root/cdk/lxd-kernel-params"
+        os.makedirs(root_dir, exist_ok=True)
+        # Kernel params taken from:
+        # https://github.com/kubernetes/kubernetes/blob/v1.22.0/pkg/kubelet/cm/container_manager_linux.go#L421-L426
+        # https://github.com/kubernetes/kubernetes/blob/v1.22.0/pkg/util/sysctl/sysctl.go#L30-L64
+        params = {
+            "vm.overcommit_memory": 1,
+            "vm.panic_on_oom": 0,
+            "kernel.panic": 10,
+            "kernel.panic_on_oops": 1,
+            "kernel.keys.root_maxkeys": 1000000,
+            "kernel.keys.root_maxbytes": 1000000 * 25,
+        }
+        for param, param_value in params.items():
+            fake_param_path = root_dir + "/" + param
+            with open(fake_param_path, "w") as f:
+                f.write(str(param_value))
+            real_param_path = "/proc/sys/" + param.replace(".", "/")
+            host.fstab_add(fake_param_path, real_param_path, "none", "bind")
+        subprocess.check_call(["mount", "-a"])
+    else:
+        hookenv.log("LXD not detected, not faking kernel params")
+
+
+def get_sandbox_image_uri(registry):
+    return "{}/pause:3.4.1".format(registry)
+
+
+def configure_kubelet(dns_domain, dns_ip, registry, taints=None):
+    kubelet_opts = {}
+    kubelet_opts["kubeconfig"] = kubelet_kubeconfig_path
+    kubelet_opts["network-plugin"] = "cni"
+    kubelet_opts["v"] = "0"
+    kubelet_opts["logtostderr"] = "true"
+    kubelet_opts["node-ip"] = get_node_ip()
+
+    container_runtime = endpoint_from_flag("endpoint.container-runtime.available")
+
+    kubelet_opts["container-runtime"] = container_runtime.get_runtime()
+    if kubelet_opts["container-runtime"] == "remote":
+        kubelet_opts["container-runtime-endpoint"] = container_runtime.get_socket()
+
+    feature_gates = {}
+
+    kubelet_cloud_config_path = cloud_config_path("kubelet")
+    if is_state("endpoint.aws.ready"):
+        kubelet_opts["cloud-provider"] = "aws"
+        feature_gates["CSIMigrationAWS"] = False
+    elif is_state("endpoint.gcp.ready"):
+        kubelet_opts["cloud-provider"] = "gce"
+        kubelet_opts["cloud-config"] = str(kubelet_cloud_config_path)
+        feature_gates["CSIMigrationGCE"] = False
+    elif is_state("endpoint.openstack.ready"):
+        kubelet_opts["cloud-provider"] = "external"
+    elif is_state("endpoint.vsphere.joined"):
+        # vsphere just needs to be joined on the worker (vs 'ready')
+        kubelet_opts["cloud-provider"] = "vsphere"
+        # NB: vsphere maps node product-id to its uuid (no config file needed).
+        uuid = _get_vmware_uuid()
+        kubelet_opts["provider-id"] = "vsphere://{}".format(uuid)
+    elif is_state("endpoint.azure.ready"):
+        azure = endpoint_from_flag("endpoint.azure.ready")
+        kubelet_opts["cloud-provider"] = "azure"
+        kubelet_opts["cloud-config"] = str(kubelet_cloud_config_path)
+        kubelet_opts["provider-id"] = azure.vm_id
+        feature_gates["CSIMigrationAzureDisk"] = False
+
+    # Put together the KubeletConfiguration data
+    kubelet_config = {
+        "apiVersion": "kubelet.config.k8s.io/v1beta1",
+        "kind": "KubeletConfiguration",
+        "address": "0.0.0.0",
+        "authentication": {
+            "anonymous": {"enabled": False},
+            "x509": {"clientCAFile": str(ca_crt_path)},
+        },
+        # NB: authz webhook config tells the kubelet to ask the api server
+        # if a request is authorized; it is not related to the authn
+        # webhook config of the k8s master services.
+        "authorization": {"mode": "Webhook"},
+        "clusterDomain": dns_domain,
+        "failSwapOn": False,
+        "port": 10250,
+        "protectKernelDefaults": True,
+        "readOnlyPort": 0,
+        "tlsCertFile": str(server_crt_path),
+        "tlsPrivateKeyFile": str(server_key_path),
+    }
+    if dns_ip:
+        kubelet_config["clusterDNS"] = [dns_ip]
+
+    # Handle feature gates
+    if get_version("kubelet") >= (1, 19):
+        # NB: required for CIS compliance
+        feature_gates["RotateKubeletServerCertificate"] = True
+    if is_state("kubernetes-worker.gpu.enabled"):
+        feature_gates["DevicePlugins"] = True
+    if feature_gates:
+        kubelet_config["featureGates"] = feature_gates
+    if is_dual_stack(cluster_cidr()):
+        feature_gates = kubelet_config.setdefault("featureGates", {})
+        feature_gates["IPv6DualStack"] = True
+
+    # Workaround for DNS on bionic
+    # https://github.com/juju-solutions/bundle-canonical-kubernetes/issues/655
+    resolv_path = os.path.realpath("/etc/resolv.conf")
+    if resolv_path == "/run/systemd/resolve/stub-resolv.conf":
+        kubelet_config["resolvConf"] = "/run/systemd/resolve/resolv.conf"
+
+    # Add kubelet-extra-config. This needs to happen last so that it
+    # overrides any config provided by the charm.
+    kubelet_extra_config = hookenv.config("kubelet-extra-config")
+    kubelet_extra_config = yaml.safe_load(kubelet_extra_config)
+    merge_kubelet_extra_config(kubelet_config, kubelet_extra_config)
+
+    # Render the file and configure Kubelet to use it
+    os.makedirs("/root/cdk/kubelet", exist_ok=True)
+    with open("/root/cdk/kubelet/config.yaml", "w") as f:
+        f.write("# Generated by kubernetes-worker charm, do not edit\n")
+        yaml.dump(kubelet_config, f)
+    kubelet_opts["config"] = "/root/cdk/kubelet/config.yaml"
+
+    # If present, ensure kubelet gets the pause container from the configured
+    # registry. When not present, kubelet uses a default image location
+    # (currently k8s.gcr.io/pause:3.4.1).
+    if registry:
+        kubelet_opts["pod-infra-container-image"] = get_sandbox_image_uri(registry)
+
+    if taints:
+        kubelet_opts["register-with-taints"] = ",".join(taints)
+
+    workaround_lxd_kernel_params()
+
+    configure_kubernetes_service(
+        "kubernetes-common.prev-args.", "kubelet", kubelet_opts, "kubelet-extra-args"
+    )
+
+
+def configure_default_cni(default_cni):
+    """Set the default CNI configuration to be used by CNI clients
+    (kubelet, containerd).
+
+    CNI clients choose whichever CNI config in /etc/cni/net.d/ is
+    alphabetically first, so we accomplish this by creating a file named
+    /etc/cni/net.d/05-default.conflist, which is alphabetically earlier than
+    typical CNI config names, e.g. 10-flannel.conflist and 10-calico.conflist
+
+    The created 05-default.conflist file is a symlink to whichever CNI config
+    is actually going to be used.
+    """
+    # Clean up current default
+    cni_conf_dir = "/etc/cni/net.d"
+    for filename in os.listdir(cni_conf_dir):
+        if filename.startswith("05-default."):
+            os.remove(cni_conf_dir + "/" + filename)
+
+    # Set new default
+    cni = endpoint_from_flag("cni.available")
+    cni_conf = cni.get_config(default=default_cni)
+    source = cni_conf["cni-conf-file"]
+    dest = cni_conf_dir + "/" + "05-default." + source.split(".")[-1]
+    os.symlink(source, dest)
