@@ -647,7 +647,7 @@ def configure_kube_proxy(
     if host.is_container():
         kube_proxy_opts["conntrack-max-per-core"] = "0"
 
-    features_gates = []
+    feature_gates = []
 
     if is_dual_stack(cluster_cidr):
         feature_gates.append("IPv6DualStack=true")
