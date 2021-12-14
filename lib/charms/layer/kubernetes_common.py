@@ -647,8 +647,19 @@ def configure_kube_proxy(
     if host.is_container():
         kube_proxy_opts["conntrack-max-per-core"] = "0"
 
+    feature_gates = []
+
     if is_dual_stack(cluster_cidr):
-        kube_proxy_opts["feature-gates"] = "IPv6DualStack=true"
+        feature_gates.append("IPv6DualStack=true")
+
+    if is_state("endpoint.aws.ready"):
+        feature_gates.append("CSIMigrationAWS=false")
+    elif is_state("endpoint.gcp.ready"):
+        feature_gates.append("CSIMigrationGCE=false")
+    elif is_state("endpoint.azure.ready"):
+        feature_gates.append("CSIMigrationAzureDisk=false")
+
+    kube_proxy_opts["feature-gates"] = ",".join(feature_gates)
 
     configure_kubernetes_service(
         configure_prefix, "kube-proxy", kube_proxy_opts, "proxy-extra-args"
