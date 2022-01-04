@@ -170,7 +170,16 @@ def get_ingress_address(endpoint_name, ignore_addresses=None):
         # doesn't support spaces, so just return the private address
         return hookenv.unit_get("private-address")
 
-    addresses = network_info["ingress-addresses"]
+    addresses = []
+    ignore_interfaces = ("lxdbr", "flannel", "cni", "virbr", "docker", "cali", "kube-ipvs")
+    for interface in temp['bind-addresses']:
+        if any (
+            interface['interfacename'].startswith(prefix) for prefix in ignore_interfaces
+        ):
+            continue
+        for addr in interface['addresses']:
+            if '32' not in addr['cidr']:
+                addresses.append(addr['address'])
 
     if ignore_addresses:
         hookenv.log("ingress-addresses before filtering: {}".format(addresses))
