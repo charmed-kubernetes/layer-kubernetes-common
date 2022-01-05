@@ -172,7 +172,7 @@ def get_ingress_address(endpoint_name, ignore_addresses=None):
 
     addresses = []
     ignore_interfaces = ("lxdbr", "flannel", "cni", "virbr", "docker", "cali", "kube-ipvs")
-    for interface in temp['bind-addresses']:
+    for interface in network_info['bind-addresses']:
         if any (
             interface['interfacename'].startswith(prefix) for prefix in ignore_interfaces
         ):
