@@ -1,7 +1,8 @@
 import json
 import string
 from subprocess import CalledProcessError
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+from charms.reactive import endpoint_from_flag
 
 from charms.layer import kubernetes_common as kc
 
@@ -120,3 +121,20 @@ def test_get_secret_password(monkeypatch):
     assert kc.get_secret_password("username") is None
     assert kc.get_secret_password("username") is None
     assert kc.get_secret_password("username") == "secret"
+
+
+@patch("os.listdir")
+@patch("os.remove")
+@patch("os.symlink")
+def test_configure_default_cni(os_symlink, os_remove, os_listdir):
+    os_listdir.return_value = ["05-default.conflist", "10-cni.conflist"]
+    cni = endpoint_from_flag("cni.available")
+    cni.get_config.return_value = {
+        "cidr": "192.168.0.0/24",
+        "cni-conf-file": "10-cni.conflist",
+    }
+    kc.configure_default_cni("test-cni")
+    os_remove.assert_called_once_with("/etc/cni/net.d/05-default.conflist")
+    os_symlink.assert_called_once_with(
+        "10-cni.conflist", "/etc/cni/net.d/05-default.conflist"
+    )
