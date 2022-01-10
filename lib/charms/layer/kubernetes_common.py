@@ -179,7 +179,7 @@ def get_ingress_address(endpoint_name, ignore_addresses=None):
         ):
             continue
         for addr in interface['addresses']:
-            if '32' not in addr['cidr']:
+            if '/32' not in addr['cidr']:
                 addresses.append(addr['address'])
 
     if ignore_addresses:
