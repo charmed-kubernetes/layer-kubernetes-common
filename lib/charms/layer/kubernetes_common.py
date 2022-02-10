@@ -996,7 +996,7 @@ def get_sandbox_image_uri(registry):
     return "{}/pause:3.4.1".format(registry)
 
 
-def configure_kubelet(dns_domain, dns_ip, registry, taints=None):
+def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
     kubelet_opts = {}
     kubelet_opts["kubeconfig"] = kubelet_kubeconfig_path
     kubelet_opts["network-plugin"] = "cni"
@@ -1013,7 +1013,9 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None):
     feature_gates = {}
 
     kubelet_cloud_config_path = cloud_config_path("kubelet")
-    if is_state("endpoint.aws.ready"):
+    if has_xcp:
+        kubelet_opts["cloud-provider"] = "external"
+    elif is_state("endpoint.aws.ready"):
         kubelet_opts["cloud-provider"] = "aws"
         feature_gates["CSIMigrationAWS"] = False
     elif is_state("endpoint.gcp.ready"):
