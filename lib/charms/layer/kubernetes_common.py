@@ -993,7 +993,7 @@ def workaround_lxd_kernel_params():
 
 
 def get_sandbox_image_uri(registry):
-    return "{}/pause:3.4.1".format(registry)
+    return "{}/pause:3.6".format(registry)
 
 
 def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
