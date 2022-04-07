@@ -586,6 +586,8 @@ def generate_openstack_cloud_config():
         lines.append("floating-network-id = {}".format(openstack.floating_network_id))
     if openstack.lb_method:
         lines.append("lb-method = {}".format(openstack.lb_method))
+    if openstack.internal_lb:
+        lines.append("internal-lb = true")
     if openstack.manage_security_groups:
         lines.append(
             "manage-security-groups = {}".format(openstack.manage_security_groups)
