@@ -999,7 +999,6 @@ def get_sandbox_image_uri(registry):
 def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
     kubelet_opts = {}
     kubelet_opts["kubeconfig"] = kubelet_kubeconfig_path
-    kubelet_opts["network-plugin"] = "cni"
     kubelet_opts["v"] = "0"
     kubelet_opts["logtostderr"] = "true"
     kubelet_opts["node-ip"] = get_node_ip()
