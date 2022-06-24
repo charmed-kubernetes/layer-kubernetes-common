@@ -1115,21 +1115,21 @@ def configure_default_cni(default_cni):
 
     CNI clients choose whichever CNI config in /etc/cni/net.d/ is
     alphabetically first, so we accomplish this by creating a file named
-    /etc/cni/net.d/05-default.conflist, which is alphabetically earlier than
+    /etc/cni/net.d/01-default.conflist, which is alphabetically earlier than
     typical CNI config names, e.g. 10-flannel.conflist and 10-calico.conflist
 
-    The created 05-default.conflist file is a symlink to whichever CNI config
+    The created 01-default.conflist file is a symlink to whichever CNI config
     is actually going to be used.
     """
     # Clean up current default
     cni_conf_dir = "/etc/cni/net.d"
     for filename in os.listdir(cni_conf_dir):
-        if filename.startswith("05-default."):
+        if filename.startswith("01-default."):
             os.remove(cni_conf_dir + "/" + filename)
 
     # Set new default
     cni = endpoint_from_flag("cni.available")
     cni_conf = cni.get_config(default=default_cni)
     source = cni_conf["cni-conf-file"]
-    dest = cni_conf_dir + "/" + "05-default." + source.split(".")[-1]
+    dest = cni_conf_dir + "/" + "01-default." + source.split(".")[-1]
     os.symlink(source, dest)
