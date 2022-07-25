@@ -733,14 +733,45 @@ def enable_ipv6_forwarding():
     check_call(["sysctl", "net.ipv6.conf.all.forwarding=1"])
 
 
-def get_bind_addrs(ipv4=True, ipv6=True):
-    """Get all global-scoped addresses that we might bind to."""
+def _as_interface(addr_str):
+    try:
+        return ipaddress.ip_interface(addr_str)
+    except ValueError:
+        return None
+
+
+def _get_bind_addrs_json():
+    try:
+        output = check_output(["ip", "-j", "-br", "addr", "show", "scope", "global"])
+    except CalledProcessError:
+        # stderr will have any details, and go to the log
+        hookenv.log("Unable to determine global addresses", hookenv.ERROR)
+        return []
+    addrs = json.loads(output.decode("utf8"))
+    for addr in addrs:
+        for ifc in addr["addr_info"]:
+            local, prefixlen = ifc.get("local"), ifc.get("prefixlen")
+            ifc["interface"] = _as_interface(f"{local}/{prefixlen}")
+    return addrs
+
+
+def _get_bind_addrs_table():
     try:
         output = check_output(["ip", "-br", "addr", "show", "scope", "global"])
     except CalledProcessError:
         # stderr will have any details, and go to the log
         hookenv.log("Unable to determine global addresses", hookenv.ERROR)
         return []
+    addrs = []
+    for line in output.decode("utf8").splitlines():
+        intf, state, *intf_addrs = line.split()
+        addr_info = [dict(interface=_as_interface(addr_str)) for addr_str in intf_addrs]
+        addrs.append(dict(ifname=intf, operstate=state, addr_info=addr_info))
+    return addrs
+
+
+def get_bind_addrs(ipv4=True, ipv6=True):
+    bind_addrs = _get_bind_addrs_json() or _get_bind_addrs_table()
 
     ignore_interfaces = ("lxdbr", "flannel", "cni", "virbr", "docker")
     accept_versions = set()
@@ -750,16 +781,17 @@ def get_bind_addrs(ipv4=True, ipv6=True):
         accept_versions.add(6)
 
     addrs = []
-    for line in output.decode("utf8").splitlines():
-        intf, state, *intf_addrs = line.split()
-        if state != "UP" or any(
-            intf.startswith(prefix) for prefix in ignore_interfaces
+    for addr in bind_addrs:
+        if addr["operstate"].upper() != "UP" or any(
+            addr["ifname"].startswith(prefix) for prefix in ignore_interfaces
         ):
             continue
-        for addr in intf_addrs:
-            ip_addr = ipaddress.ip_interface(addr).ip
-            if ip_addr.version in accept_versions:
-                addrs.append(str(ip_addr))
+        for ip_addr in addr["addr_info"]:
+            interface = ip_addr.get("interface")
+            if not interface:
+                continue
+            if interface.ip.version in accept_versions:
+                addrs.append(str(interface.ip))
     return addrs
 
 
