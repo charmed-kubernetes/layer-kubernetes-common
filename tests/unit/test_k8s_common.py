@@ -141,16 +141,8 @@ def test_configure_default_cni(os_symlink, os_remove, os_listdir):
     )
 
 
-def test_get_bind_addrs_json_format():
+def test_get_bind_addrs():
     response = Path("tests", "data", "ip_addr_json").read_bytes()
-    with patch.object(kc, "check_output", return_value=response):
-        addrs = kc.get_bind_addrs()
-    assert addrs == ["10.246.154.77"]
-
-
-@patch.object(kc, "_get_bind_addrs_json", return_value=None)
-def test_get_bind_addrs_table_format(addrs_json):
-    response = Path("tests", "data", "ip_addr_table").read_bytes()
     with patch.object(kc, "check_output", return_value=response):
         addrs = kc.get_bind_addrs()
     assert addrs == ["10.246.154.77"]

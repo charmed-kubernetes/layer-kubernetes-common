@@ -733,45 +733,20 @@ def enable_ipv6_forwarding():
     check_call(["sysctl", "net.ipv6.conf.all.forwarding=1"])
 
 
-def _as_interface(addr_str):
+def _as_address(addr_str):
     try:
-        return ipaddress.ip_interface(addr_str)
+        return ipaddress.ip_address(addr_str)
     except ValueError:
         return None
 
 
-def _get_bind_addrs_json():
+def get_bind_addrs(ipv4=True, ipv6=True):
     try:
         output = check_output(["ip", "-j", "-br", "addr", "show", "scope", "global"])
     except CalledProcessError:
         # stderr will have any details, and go to the log
         hookenv.log("Unable to determine global addresses", hookenv.ERROR)
         return []
-    addrs = json.loads(output.decode("utf8"))
-    for addr in addrs:
-        for ifc in addr["addr_info"]:
-            local, prefixlen = ifc.get("local"), ifc.get("prefixlen")
-            ifc["interface"] = _as_interface(f"{local}/{prefixlen}")
-    return addrs
-
-
-def _get_bind_addrs_table():
-    try:
-        output = check_output(["ip", "-br", "addr", "show", "scope", "global"])
-    except CalledProcessError:
-        # stderr will have any details, and go to the log
-        hookenv.log("Unable to determine global addresses", hookenv.ERROR)
-        return []
-    addrs = []
-    for line in output.decode("utf8").splitlines():
-        intf, state, *intf_addrs = line.split()
-        addr_info = [dict(interface=_as_interface(addr_str)) for addr_str in intf_addrs]
-        addrs.append(dict(ifname=intf, operstate=state, addr_info=addr_info))
-    return addrs
-
-
-def get_bind_addrs(ipv4=True, ipv6=True):
-    bind_addrs = _get_bind_addrs_json() or _get_bind_addrs_table()
 
     ignore_interfaces = ("lxdbr", "flannel", "cni", "virbr", "docker")
     accept_versions = set()
@@ -781,17 +756,17 @@ def get_bind_addrs(ipv4=True, ipv6=True):
         accept_versions.add(6)
 
     addrs = []
-    for addr in bind_addrs:
+    for addr in json.loads(output.decode("utf8")):
         if addr["operstate"].upper() != "UP" or any(
             addr["ifname"].startswith(prefix) for prefix in ignore_interfaces
         ):
             continue
-        for ip_addr in addr["addr_info"]:
-            interface = ip_addr.get("interface")
-            if not interface:
-                continue
-            if interface.ip.version in accept_versions:
-                addrs.append(str(interface.ip))
+
+        for ifc in addr["addr_info"]:
+            local_addr = _as_address(ifc.get("local"))
+            if local_addr and local_addr.version in accept_versions:
+                addrs.append(str(local_addr))
+
     return addrs
 
 
