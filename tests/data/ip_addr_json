@@ -1,0 +1,30 @@
+[
+  {
+    "ifname": "ens192",
+    "operstate": "UP",
+    "addr_info": [
+      {
+        "local": "10.246.154.77",
+        "prefixlen": 24,
+        "metric": 100
+      },
+      {}
+    ]
+  },
+  {
+    "ifname": "lxdbr0",
+    "operstate": "UP",
+    "addr_info": [
+      {
+        "local": "10.111.246.1",
+        "prefixlen": 24
+      }
+    ]
+  },
+  {
+    "link_index": 4,
+    "ifname": "veth890e3a36",
+    "operstate": "UP",
+    "addr_info": []
+  }
+]

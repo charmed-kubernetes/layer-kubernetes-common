@@ -733,10 +733,16 @@ def enable_ipv6_forwarding():
     check_call(["sysctl", "net.ipv6.conf.all.forwarding=1"])
 
 
-def get_bind_addrs(ipv4=True, ipv6=True):
-    """Get all global-scoped addresses that we might bind to."""
+def _as_address(addr_str):
     try:
-        output = check_output(["ip", "-br", "addr", "show", "scope", "global"])
+        return ipaddress.ip_address(addr_str)
+    except ValueError:
+        return None
+
+
+def get_bind_addrs(ipv4=True, ipv6=True):
+    try:
+        output = check_output(["ip", "-j", "-br", "addr", "show", "scope", "global"])
     except CalledProcessError:
         # stderr will have any details, and go to the log
         hookenv.log("Unable to determine global addresses", hookenv.ERROR)
@@ -750,16 +756,17 @@ def get_bind_addrs(ipv4=True, ipv6=True):
         accept_versions.add(6)
 
     addrs = []
-    for line in output.decode("utf8").splitlines():
-        intf, state, *intf_addrs = line.split()
-        if state != "UP" or any(
-            intf.startswith(prefix) for prefix in ignore_interfaces
+    for addr in json.loads(output.decode("utf8")):
+        if addr["operstate"].upper() != "UP" or any(
+            addr["ifname"].startswith(prefix) for prefix in ignore_interfaces
         ):
             continue
-        for addr in intf_addrs:
-            ip_addr = ipaddress.ip_interface(addr).ip
-            if ip_addr.version in accept_versions:
-                addrs.append(str(ip_addr))
+
+        for ifc in addr["addr_info"]:
+            local_addr = _as_address(ifc.get("local"))
+            if local_addr and local_addr.version in accept_versions:
+                addrs.append(str(local_addr))
+
     return addrs
 
 
