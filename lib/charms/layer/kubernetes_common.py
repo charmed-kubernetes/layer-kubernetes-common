@@ -661,6 +661,8 @@ def configure_kube_proxy(
         feature_gates.append("CSIMigrationGCE=false")
     elif is_state("endpoint.azure.ready"):
         feature_gates.append("CSIMigrationAzureDisk=false")
+    elif is_state("endpoint.vsphere.ready"):
+        feature_gates.append("CSIMigrationvSphere=false")
 
     kube_proxy_opts["feature-gates"] = ",".join(feature_gates)
 
@@ -1038,6 +1040,7 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
         # NB: vsphere maps node product-id to its uuid (no config file needed).
         uuid = _get_vmware_uuid()
         kubelet_opts["provider-id"] = "vsphere://{}".format(uuid)
+        feature_gates["CSIMigrationvSphere"] = False
     elif is_state("endpoint.azure.ready"):
         azure = endpoint_from_flag("endpoint.azure.ready")
         kubelet_opts["cloud-provider"] = "azure"
