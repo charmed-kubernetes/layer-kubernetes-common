@@ -656,9 +656,11 @@ def configure_kube_proxy(
         feature_gates.append("IPv6DualStack=true")
 
     if is_state("endpoint.aws.ready"):
-        feature_gates.append("CSIMigrationAWS=false")
+        if get_version("kubelet") < (1, 25, 0):
+            feature_gates.append("CSIMigrationAWS=false")
     elif is_state("endpoint.gcp.ready"):
-        feature_gates.append("CSIMigrationGCE=false")
+        if get_version("kubelet") < (1, 25, 0):
+            feature_gates.append("CSIMigrationGCE=false")
     elif is_state("endpoint.azure.ready"):
         feature_gates.append("CSIMigrationAzureDisk=false")
     elif is_state("endpoint.vsphere.ready"):
@@ -1027,11 +1029,13 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
         kubelet_opts["cloud-provider"] = "external"
     elif is_state("endpoint.aws.ready"):
         kubelet_opts["cloud-provider"] = "aws"
-        feature_gates["CSIMigrationAWS"] = False
+        if get_version("kubelet") < (1, 25, 0):
+            feature_gates["CSIMigrationAWS"] = False
     elif is_state("endpoint.gcp.ready"):
         kubelet_opts["cloud-provider"] = "gce"
         kubelet_opts["cloud-config"] = str(kubelet_cloud_config_path)
-        feature_gates["CSIMigrationGCE"] = False
+        if get_version("kubelet") < (1, 25, 0):
+            feature_gates["CSIMigrationGCE"] = False
     elif is_state("endpoint.openstack.ready"):
         kubelet_opts["cloud-provider"] = "external"
     elif is_state("endpoint.vsphere.joined"):
