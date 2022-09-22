@@ -653,7 +653,8 @@ def configure_kube_proxy(
     feature_gates = []
 
     if is_dual_stack(cluster_cidr):
-        feature_gates.append("IPv6DualStack=true")
+        if get_version("kubelet") < (1, 25, 0):
+            feature_gates.append("IPv6DualStack=true")
 
     if is_state("endpoint.aws.ready"):
         if get_version("kubelet") < (1, 25, 0):
@@ -1085,8 +1086,9 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
     if feature_gates:
         kubelet_config["featureGates"] = feature_gates
     if is_dual_stack(cluster_cidr()):
-        feature_gates = kubelet_config.setdefault("featureGates", {})
-        feature_gates["IPv6DualStack"] = True
+        if get_version("kubelet") < (1, 25, 0):
+            feature_gates = kubelet_config.setdefault("featureGates", {})
+            feature_gates["IPv6DualStack"] = True
 
     # Workaround for DNS on bionic
     # https://github.com/juju-solutions/bundle-canonical-kubernetes/issues/655
