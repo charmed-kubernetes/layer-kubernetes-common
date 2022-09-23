@@ -659,7 +659,8 @@ def configure_kube_proxy(
         if get_version("kubelet") < (1, 25, 0):
             feature_gates.append("CSIMigrationGCE=false")
     elif is_state("endpoint.azure.ready"):
-        feature_gates.append("CSIMigrationAzureDisk=false")
+        if get_version("kubelet") < (1, 25, 0):
+            feature_gates.append("CSIMigrationAzureDisk=false")
     elif is_state("endpoint.vsphere.ready"):
         feature_gates.append("CSIMigrationvSphere=false")
 
@@ -1047,7 +1048,8 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
         kubelet_opts["cloud-provider"] = "azure"
         kubelet_opts["cloud-config"] = str(kubelet_cloud_config_path)
         kubelet_opts["provider-id"] = azure.vm_id
-        feature_gates["CSIMigrationAzureDisk"] = False
+        if get_version("kubelet") < (1, 25, 0):
+            feature_gates["CSIMigrationAzureDisk"] = False
 
     # Put together the KubeletConfiguration data
     kubelet_config = {
