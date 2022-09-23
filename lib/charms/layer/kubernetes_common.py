@@ -659,7 +659,8 @@ def configure_kube_proxy(
         if get_version("kubelet") < (1, 25, 0):
             feature_gates.append("CSIMigrationGCE=false")
     elif is_state("endpoint.azure.ready"):
-        feature_gates.append("CSIMigrationAzureDisk=false")
+        if get_version("kubelet") < (1, 25, 0):
+            feature_gates.append("CSIMigrationAzureDisk=false")
     elif is_state("endpoint.vsphere.ready"):
         feature_gates.append("CSIMigrationvSphere=false")
 
