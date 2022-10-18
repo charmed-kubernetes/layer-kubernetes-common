@@ -637,7 +637,8 @@ def configure_kube_proxy(
     kube_proxy_opts = {}
     kube_proxy_opts["cluster-cidr"] = cluster_cidr
     kube_proxy_opts["kubeconfig"] = kubeproxyconfig_path
-    kube_proxy_opts["logtostderr"] = "true"
+    if get_version("kube-proxy") < (1, 26, 0):
+        kube_proxy_opts["logtostderr"] = "true"
     kube_proxy_opts["v"] = "0"
     num_apis = len(api_servers)
     kube_proxy_opts["master"] = api_servers[get_unit_number() % num_apis]
@@ -1011,7 +1012,8 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
     kubelet_opts = {}
     kubelet_opts["kubeconfig"] = kubelet_kubeconfig_path
     kubelet_opts["v"] = "0"
-    kubelet_opts["logtostderr"] = "true"
+    if get_version("kubelet") < (1, 26, 0):
+        kubelet_opts["logtostderr"] = "true"
     kubelet_opts["node-ip"] = get_node_ip()
 
     container_runtime = endpoint_from_flag("endpoint.container-runtime.available")
