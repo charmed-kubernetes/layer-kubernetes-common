@@ -982,6 +982,7 @@ def workaround_lxd_kernel_params():
         hookenv.log("LXD detected, faking kernel params via bind mounts")
         root_dir = "/root/cdk/lxd-kernel-params"
         os.makedirs(root_dir, exist_ok=True)
+        Path("/etc/fstab").touch(mode=0o644, exists_ok=True)
         # Kernel params taken from:
         # https://github.com/kubernetes/kubernetes/blob/v1.22.0/pkg/kubelet/cm/container_manager_linux.go#L421-L426
         # https://github.com/kubernetes/kubernetes/blob/v1.22.0/pkg/util/sysctl/sysctl.go#L30-L64
