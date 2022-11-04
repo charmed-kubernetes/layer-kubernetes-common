@@ -572,6 +572,9 @@ def generate_openstack_cloud_config():
         ]
     )
 
+    if openstack.lb_enabled == False:
+        lines.append("enabled = false")
+
     if openstack.has_octavia in (True, None):
         # Newer integrator charm will detect whether underlying OpenStack has
         # Octavia enabled so we can set this intelligently. If we're still
