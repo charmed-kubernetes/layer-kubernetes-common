@@ -31,6 +31,7 @@ from pathlib import Path
 from subprocess import check_output, check_call
 from socket import gethostname, getfqdn
 from shlex import split
+from shutil import copyfile
 from subprocess import CalledProcessError
 from charmhelpers.core import hookenv, unitdata
 from charmhelpers.core import host
@@ -1146,3 +1147,30 @@ def configure_default_cni(default_cni):
     source = cni_conf["cni-conf-file"]
     dest = cni_conf_dir + "/" + "01-default." + source.split(".")[-1]
     os.symlink(source, dest)
+
+
+def add_systemd_restart_always(services):
+    template = "templates/service-always-restart.systemd-latest.conf"
+
+    try:
+        # Get the systemd version
+        cmd = ["systemd", "--version"]
+        output = check_output(cmd).decode("UTF-8")
+        line = output.splitlines()[0]
+        words = line.split()
+        assert words[0] == "systemd"
+        systemd_version = int(words[1])
+
+        # Check for old version (for xenial support)
+        if systemd_version < 230:
+            template = "templates/service-always-restart.systemd-229.conf"
+    except Exception:
+        traceback.print_exc()
+        hookenv.log(
+            "Failed to detect systemd version, using latest template", level="ERROR"
+        )
+
+    for service in services:
+        dest_dir = "/etc/systemd/system/snap.{}.daemon.service.d".format(service)
+        os.makedirs(dest_dir, exist_ok=True)
+        copyfile(template, "{}/always-restart.conf".format(dest_dir))
