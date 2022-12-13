@@ -638,7 +638,8 @@ def configure_kube_proxy(
     kube_proxy_opts = {}
     kube_proxy_opts["cluster-cidr"] = cluster_cidr
     kube_proxy_opts["kubeconfig"] = kubeproxyconfig_path
-    if get_version("kube-proxy") < (1, 26, 0):
+    kube_version = get_version("kube-proxy")
+    if kube_version < (1, 26, 0):
         kube_proxy_opts["logtostderr"] = "true"
     kube_proxy_opts["v"] = "0"
     num_apis = len(api_servers)
@@ -655,16 +656,17 @@ def configure_kube_proxy(
     feature_gates = []
 
     if is_state("endpoint.aws.ready"):
-        if get_version("kubelet") < (1, 25, 0):
+        if kube_version < (1, 25, 0):
             feature_gates.append("CSIMigrationAWS=false")
     elif is_state("endpoint.gcp.ready"):
-        if get_version("kubelet") < (1, 25, 0):
+        if kube_version < (1, 25, 0):
             feature_gates.append("CSIMigrationGCE=false")
     elif is_state("endpoint.azure.ready"):
-        if get_version("kubelet") < (1, 25, 0):
+        if kube_version < (1, 25, 0):
             feature_gates.append("CSIMigrationAzureDisk=false")
     elif is_state("endpoint.vsphere.ready"):
-        feature_gates.append("CSIMigrationvSphere=false")
+        if kube_version < (1, 26, 0):
+            feature_gates.append("CSIMigrationvSphere=false")
 
     kube_proxy_opts["feature-gates"] = ",".join(feature_gates)
 
@@ -1014,7 +1016,8 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
     kubelet_opts = {}
     kubelet_opts["kubeconfig"] = kubelet_kubeconfig_path
     kubelet_opts["v"] = "0"
-    if get_version("kubelet") < (1, 26, 0):
+    kube_version = get_version("kubelet")
+    if kube_version < (1, 26, 0):
         kubelet_opts["logtostderr"] = "true"
     kubelet_opts["node-ip"] = get_node_ip()
 
@@ -1031,12 +1034,12 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
         kubelet_opts["cloud-provider"] = "external"
     elif is_state("endpoint.aws.ready"):
         kubelet_opts["cloud-provider"] = "aws"
-        if get_version("kubelet") < (1, 25, 0):
+        if kube_version < (1, 25, 0):
             feature_gates["CSIMigrationAWS"] = False
     elif is_state("endpoint.gcp.ready"):
         kubelet_opts["cloud-provider"] = "gce"
         kubelet_opts["cloud-config"] = str(kubelet_cloud_config_path)
-        if get_version("kubelet") < (1, 25, 0):
+        if kube_version < (1, 25, 0):
             feature_gates["CSIMigrationGCE"] = False
     elif is_state("endpoint.openstack.ready"):
         kubelet_opts["cloud-provider"] = "external"
@@ -1046,13 +1049,14 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
         # NB: vsphere maps node product-id to its uuid (no config file needed).
         uuid = _get_vmware_uuid()
         kubelet_opts["provider-id"] = "vsphere://{}".format(uuid)
-        feature_gates["CSIMigrationvSphere"] = False
+        if kube_version < (1, 26, 0):
+            feature_gates["CSIMigrationvSphere"] = False
     elif is_state("endpoint.azure.ready"):
         azure = endpoint_from_flag("endpoint.azure.ready")
         kubelet_opts["cloud-provider"] = "azure"
         kubelet_opts["cloud-config"] = str(kubelet_cloud_config_path)
         kubelet_opts["provider-id"] = azure.vm_id
-        if get_version("kubelet") < (1, 25, 0):
+        if kube_version < (1, 25, 0):
             feature_gates["CSIMigrationAzureDisk"] = False
 
     # Put together the KubeletConfiguration data
@@ -1080,7 +1084,7 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
         kubelet_config["clusterDNS"] = [dns_ip]
 
     # Handle feature gates
-    if get_version("kubelet") >= (1, 19):
+    if kube_version >= (1, 19):
         # NB: required for CIS compliance
         feature_gates["RotateKubeletServerCertificate"] = True
     if is_state("kubernetes-worker.gpu.enabled"):
