@@ -572,7 +572,7 @@ def generate_openstack_cloud_config():
         ]
     )
 
-    if openstack.lb_enabled == False:
+    if openstack.lb_enabled is False:
         lines.append("enabled = false")
 
     if openstack.has_octavia in (True, None):
