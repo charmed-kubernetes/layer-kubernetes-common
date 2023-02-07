@@ -635,11 +635,10 @@ def write_azure_snap_config(component):
     )
 
 
-def configure_kube_proxy(
-    configure_prefix, api_servers, cluster_cidr, bind_address=None
-):
+def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr):
     kube_proxy_opts = {}
-    kube_proxy_opts["cluster-cidr"] = cluster_cidr
+    if cluster_cidr:
+        kube_proxy_opts["cluster-cidr"] = cluster_cidr
     kube_proxy_opts["kubeconfig"] = kubeproxyconfig_path
     kube_version = get_version("kube-proxy")
     if kube_version < (1, 26, 0):
@@ -648,10 +647,6 @@ def configure_kube_proxy(
     num_apis = len(api_servers)
     kube_proxy_opts["master"] = api_servers[get_unit_number() % num_apis]
     kube_proxy_opts["hostname-override"] = get_node_name()
-    if bind_address:
-        kube_proxy_opts["bind-address"] = bind_address
-    elif is_ipv6(cluster_cidr):
-        kube_proxy_opts["bind-address"] = "::"
 
     if host.is_container():
         kube_proxy_opts["conntrack-max-per-core"] = "0"
@@ -957,9 +952,7 @@ def get_secret_password(username):
 def get_node_ip():
     """Determines the preferred NodeIP value for this node."""
     cidr = cluster_cidr()
-    if not cidr:
-        return None
-    if is_ipv6_preferred(cidr):
+    if cidr and is_ipv6_preferred(cidr):
         return get_ingress_address6("kube-control")
     else:
         return get_ingress_address("kube-control")
@@ -1150,10 +1143,11 @@ def configure_default_cni(default_cni):
 
     # Set new default
     cni = endpoint_from_flag("cni.available")
-    cni_conf = cni.get_config(default=default_cni)
-    source = cni_conf["cni-conf-file"]
-    dest = cni_conf_dir + "/" + "01-default." + source.split(".")[-1]
-    os.symlink(source, dest)
+    if cni:
+        cni_conf = cni.get_config(default=default_cni)
+        source = cni_conf["cni-conf-file"]
+        dest = cni_conf_dir + "/" + "01-default." + source.split(".")[-1]
+        os.symlink(source, dest)
 
 
 def add_systemd_restart_always(services):
@@ -1181,3 +1175,13 @@ def add_systemd_restart_always(services):
         dest_dir = "/etc/systemd/system/snap.{}.daemon.service.d".format(service)
         os.makedirs(dest_dir, exist_ok=True)
         copyfile(template, "{}/always-restart.conf".format(dest_dir))
+
+
+def cni_config_exists():
+    """Check if CNI config exists in /etc/cni/net.d. Returns True or False."""
+    cni_conf_dir = "/etc/cni/net.d"
+    try:
+        return bool(os.listdir(cni_conf_dir))
+    except FileNotFoundError:
+        # cni conf dir doesn't exist -> cni conf doesn't exist
+        return False
