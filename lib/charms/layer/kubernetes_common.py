@@ -422,7 +422,7 @@ def create_kubeconfig(
             "aws-iam-user --exec-command=aws-iam-authenticator "
             '--exec-arg="token" --exec-arg="-i" --exec-arg="{1}" '
             '--exec-arg="-r" --exec-arg="<<insert_arn_here>>" '
-            "--exec-api-version=client.authentication.k8s.io/v1alpha1"
+            "--exec-api-version=client.authentication.k8s.io/v1beta1"
         )
         check_call(split(cmd.format(new_kubeconfig, aws_iam_cluster_id)))
 
