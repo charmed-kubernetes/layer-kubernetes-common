@@ -1008,6 +1008,40 @@ def get_sandbox_image_uri(registry):
     return "{}/pause:3.6".format(registry)
 
 
+def v1_taint_from_string(taint: str):
+    """
+    Create a taint object from given string.
+
+    Schema defined here
+    https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.26/#taint-v1-core
+    format:  key[=value]:effect
+    """
+    try:
+        head, effect = taint.split(":")  # only 1 ':' may exist in the string
+    except ValueError as e:
+        err_msg = f"taint {taint} must have a single colon (':')"
+        hookenv.log(err_msg, level="ERROR")
+        raise ValueError(err_msg)
+
+    key, *value = head.split("=")  # optionally, only 1 "=" may exist in the string
+    valid_effects = {"NoSchedule", "PreferNoSchedule", "NoExecute"}
+
+    err_msg = None
+    if effect not in valid_effects:
+        err_msg = f"taint {taint} effect may only be in {', '.join(valid_effects)}"
+    elif len(value) > 1:
+        err_msg = f"taint {taint} may have only a single equals ('=')"
+
+    if err_msg:
+        hookenv.log(err_msg, level="ERROR")
+        raise ValueError(err_msg)
+
+    obj = {"key": key, "effect": effect}
+    if value:
+        obj["value"] = value[0]
+    return obj
+
+
 def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
     kubelet_opts = {}
     kubelet_opts["kubeconfig"] = kubelet_kubeconfig_path
@@ -1018,9 +1052,18 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
     kubelet_opts["node-ip"] = get_node_ip()
 
     container_runtime = endpoint_from_flag("endpoint.container-runtime.available")
+    runtime_type = container_runtime.get_runtime()
 
-    kubelet_opts["container-runtime"] = container_runtime.get_runtime()
-    if kubelet_opts["container-runtime"] == "remote":
+    if kube_version < (1, 27, 0):
+        kubelet_opts["container-runtime"] = runtime_type
+    elif runtime_type != "remote":
+        err_msg = (
+            f"Runtime {runtime_type} is no longer supported in {'.'.join(kube_version)}"
+        )
+        hookenv.log(err_msg, level="ERROR")
+        raise ValueError(err_msg)
+
+    if runtime_type == "remote":
         kubelet_opts["container-runtime-endpoint"] = container_runtime.get_socket()
 
     feature_gates = {}
@@ -1094,6 +1137,11 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
     if resolv_path == "/run/systemd/resolve/stub-resolv.conf":
         kubelet_config["resolvConf"] = "/run/systemd/resolve/resolv.conf"
 
+    if taints:
+        kubelet_config["registerWithTaints"] = [
+            v1_taint_from_string(taint) for taint in taints
+        ]
+
     # Add kubelet-extra-config. This needs to happen last so that it
     # overrides any config provided by the charm.
     kubelet_extra_config = hookenv.config("kubelet-extra-config")
@@ -1110,11 +1158,8 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
     # If present, ensure kubelet gets the pause container from the configured
     # registry. When not present, kubelet uses a default image location
     # (currently k8s.gcr.io/pause:3.4.1).
-    if registry:
+    if registry and kube_version < (1, 27, 0):
         kubelet_opts["pod-infra-container-image"] = get_sandbox_image_uri(registry)
-
-    if taints:
-        kubelet_opts["register-with-taints"] = ",".join(taints)
 
     workaround_lxd_kernel_params()
 

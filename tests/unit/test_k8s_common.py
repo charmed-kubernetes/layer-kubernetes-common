@@ -2,10 +2,50 @@ import json
 import string
 from subprocess import CalledProcessError
 from pathlib import Path
+import pytest
 from unittest.mock import Mock, patch
 from charms.reactive import endpoint_from_flag
 
+
 from charms.layer import kubernetes_common as kc
+
+
+@pytest.mark.parametrize(
+    "taint, key, value, effect",
+    [
+        (
+            "kubernetes.io/uninitialized=true:NoSchedule",
+            "kubernetes.io/uninitialized",
+            "true",
+            "NoSchedule",
+        ),
+        (
+            "kubernetes.io/uninitialized:NoExecute",
+            "kubernetes.io/uninitialized",
+            None,
+            "NoExecute",
+        ),
+    ],
+)
+def test_v1_taints_from_string_success(taint, key, value, effect):
+    obj = kc.v1_taint_from_string(taint)
+    assert obj.get("key") == key
+    assert obj.get("value") == value
+    assert obj.get("effect") == effect
+
+
+@pytest.mark.parametrize(
+    "taint, issue",
+    [
+        ("kubernetes.io/uninitialized=true:BadEffect", "effect"),
+        ("kubernetes.io/uninitialized=NoExecute", "colon"),
+        ("kubernetes.io=uninitialized=true:NoExecute", "equals"),
+    ],
+)
+def test_v1_taints_from_string_failure(taint, issue):
+    with pytest.raises(ValueError) as ie:
+        kc.v1_taint_from_string(taint)
+    assert issue in str(ie.value)
 
 
 def test_token_generator():
