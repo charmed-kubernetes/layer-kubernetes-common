@@ -654,6 +654,7 @@ def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr):
 
     feature_gates = {}
 
+    kube_version = get_version("kube-proxy")
     if is_state("endpoint.aws.ready"):
         if kube_version < (1, 25, 0):
             feature_gates["CSIMigrationAWS"] = False
@@ -669,7 +670,6 @@ def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr):
 
     kube_proxy_config["featureGates"] = feature_gates
 
-    kube_version = get_version("kube-proxy")
     if kube_version < (1, 26, 0):
         kube_proxy_opts["logtostderr"] = "true"
     kube_proxy_opts["v"] = "0"
@@ -1034,7 +1034,7 @@ def v1_taint_from_string(taint: str):
     """
     try:
         head, effect = taint.split(":")  # only 1 ':' may exist in the string
-    except ValueError as e:
+    except ValueError:
         err_msg = f"taint {taint} must have a single colon (':')"
         hookenv.log(err_msg, level="ERROR")
         raise ValueError(err_msg)
