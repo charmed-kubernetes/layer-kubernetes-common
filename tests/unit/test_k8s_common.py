@@ -196,13 +196,14 @@ def test_get_bind_addrs():
 @patch("os.makedirs", Mock())
 @patch.object(kc, "open")
 @pytest.mark.parametrize("version", [(1, 27, 0), (1, 26, 0)], ids=["1.27.0", "1.26.0"])
+@pytest.mark.parametrize("runtime", ["remote", "local"])
 def test_configure_kubelet(
-    f_open, hookenv, conf_service, get_version, version, tmp_path
+    f_open, hookenv, conf_service, get_version, version, runtime, tmp_path
 ):
     get_version.return_value = version
     endpoint_from_flag(
         "endpoint.container-runtime.available"
-    ).get_runtime.return_value = "remote"
+    ).get_runtime.return_value = runtime
     hookenv.config.return_value = "{}"
     kc.configure_kubelet(".test.domain", "10.10.10.10", "registry.k8s.io")
 
@@ -212,19 +213,10 @@ def test_configure_kubelet(
         f.write.assert_has_calls([first_call])
 
     conf_service.assert_called_once()
-
-
-@patch.object(kc, "get_node_ip", Mock(return_value="10.1.1.1"))
-@patch.object(kc, "get_version")
-@patch.object(kc, "hookenv")
-def test_configure_kubelet_invalid_runtime(hookenv, get_version, tmp_path):
-    get_version.return_value = (1, 27, 0)
-    endpoint_from_flag(
-        "endpoint.container-runtime.available"
-    ).get_runtime.return_value = "local"
-    with pytest.raises(ValueError) as ie:
-        kc.configure_kubelet(".test.domain", "10.10.10.10", "registry.k8s.io")
-
-    expected_err = "Runtime local is no longer supported in 1.27.0"
-    assert str(ie.value) == expected_err
-    hookenv.log.assert_called_once_with(expected_err, level="ERROR")
+    if runtime == "local" and version == (1, 27, 0):
+        # Ensure we get a log message about invalid runtimes
+        hookenv.log.assert_called_once_with(
+            "Runtime local is no longer supported in 1.27.0", level="ERROR"
+        )
+    else:
+        hookenv.log.assert_not_called()
