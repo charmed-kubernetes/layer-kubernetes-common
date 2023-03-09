@@ -213,10 +213,3 @@ def test_configure_kubelet(
         f.write.assert_has_calls([first_call])
 
     conf_service.assert_called_once()
-    if runtime == "local" and version == (1, 27, 0):
-        # Ensure we get a log message about invalid runtimes
-        hookenv.log.assert_called_once_with(
-            "Runtime local is no longer supported in 1.27.0", level="ERROR"
-        )
-    else:
-        hookenv.log.assert_not_called()

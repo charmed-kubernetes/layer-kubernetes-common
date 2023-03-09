@@ -1072,13 +1072,7 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
 
     if kube_version < (1, 27, 0):
         kubelet_opts["container-runtime"] = runtime_type
-    elif runtime_type != "remote":
-        ver_str = ".".join(map(str, kube_version))
-        err_msg = f"Runtime {runtime_type} is no longer supported in {ver_str}"
-        hookenv.log(err_msg, level="ERROR")
-
-    if runtime_type == "remote":
-        kubelet_opts["container-runtime-endpoint"] = container_runtime.get_socket()
+    kubelet_opts["container-runtime-endpoint"] = container_runtime.get_socket()
 
     feature_gates = {}
 
