@@ -1074,7 +1074,7 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
         kubelet_opts["container-runtime"] = runtime_type
     elif runtime_type != "remote":
         err_msg = (
-            f"Runtime {runtime_type} is no longer supported in {'.'.join(kube_version)}"
+            f"Runtime {runtime_type} is no longer supported in {'.'.join(map(str,kube_version))}"
         )
         hookenv.log(err_msg, level="ERROR")
         raise ValueError(err_msg)
