@@ -1080,7 +1080,12 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
     if has_xcp:
         kubelet_opts["cloud-provider"] = "external"
     elif is_state("endpoint.aws.ready"):
-        kubelet_opts["cloud-provider"] = "aws"
+        if kube_version < (1, 27, 0):
+            kubelet_opts["cloud-provider"] = "aws"
+        else:
+            # 1.27.0 drops aws cloud-provider, must use external provider
+            kubelet_opts["cloud-provider"] = "external"
+            kubelet_opts["hostname-override"] = get_node_name()
         if kube_version < (1, 25, 0):
             feature_gates["CSIMigrationAWS"] = False
     elif is_state("endpoint.gcp.ready"):
