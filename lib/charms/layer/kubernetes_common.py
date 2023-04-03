@@ -33,6 +33,7 @@ from socket import gethostname, getfqdn
 from shlex import split
 from shutil import copyfile
 from subprocess import CalledProcessError
+from typing import Optional, Sequence
 from charmhelpers.core import hookenv, unitdata
 from charmhelpers.core import host
 from charmhelpers.core.templating import render
@@ -1058,7 +1059,26 @@ def v1_taint_from_string(taint: str):
     return obj
 
 
-def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
+def configure_kubelet(
+    dns_domain: Optional[str],
+    dns_ip: str,
+    registry: str,
+    taints: Sequence[str] = None,
+    has_xcp: bool = False,
+):
+    """Configures the kublet args and config file based on current relations.
+
+    Configures command-line and config file arguments
+    https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/
+    https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/
+
+    @param dns_domain: See `clusterDomain` the DNS domain for this cluster
+    @param dns_ip: See `clusterDNS` IP addresses for the cluster DNS server
+    @param registry: pre-1.27, used in the image for `pod-infra-container-image`
+    @param taints: See `registerWithTaints`
+           Array of taints to add to a node object when registering this node
+    @param has_xcp: True if related to an external cloud provider
+    """
     kubelet_opts = {}
     kubelet_opts["kubeconfig"] = kubelet_kubeconfig_path
     kubelet_opts["v"] = "0"
@@ -1079,8 +1099,17 @@ def configure_kubelet(dns_domain, dns_ip, registry, taints=None, has_xcp=False):
     kubelet_cloud_config_path = cloud_config_path("kubelet")
     if has_xcp:
         kubelet_opts["cloud-provider"] = "external"
+        if is_state("endpoint.aws.ready"):
+            kubelet_opts["hostname-override"] = get_node_name()
     elif is_state("endpoint.aws.ready"):
-        kubelet_opts["cloud-provider"] = "aws"
+        if kube_version < (1, 27, 0):
+            kubelet_opts["cloud-provider"] = "aws"
+        else:
+            hookenv.log(
+                "AWS cloud-provider is no longer available in-tree. "
+                "the out-of-tree provider is necessary",
+                level="WARNING",
+            )
         if kube_version < (1, 25, 0):
             feature_gates["CSIMigrationAWS"] = False
     elif is_state("endpoint.gcp.ready"):
