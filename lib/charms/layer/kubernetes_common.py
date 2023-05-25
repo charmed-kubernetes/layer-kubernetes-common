@@ -677,6 +677,12 @@ def configure_kube_proxy(configure_prefix, api_servers, cluster_cidr):
     num_apis = len(api_servers)
     kube_proxy_opts["master"] = api_servers[get_unit_number() % num_apis]
 
+    # Add proxy-extra-config. This needs to happen last so that it
+    # overrides any config provided by the charm.
+    proxy_extra_config = hookenv.config("proxy-extra-config")
+    proxy_extra_config = yaml.safe_load(proxy_extra_config)
+    merge_extra_config(kube_proxy_config, proxy_extra_config)
+
     # Render the file and configure kube_proxy to use it
     os.makedirs("/root/cdk/kubeproxy", exist_ok=True)
     with open("/root/cdk/kubeproxy/config.yaml", "w") as f:
@@ -975,7 +981,7 @@ def get_node_ip():
         return get_ingress_address("kube-control")
 
 
-def merge_kubelet_extra_config(config, extra_config):
+def merge_extra_config(config, extra_config):
     """Updates config to include the contents of extra_config. This is done
     recursively to allow deeply nested dictionaries to be merged.
 
@@ -984,7 +990,7 @@ def merge_kubelet_extra_config(config, extra_config):
     for k, extra_config_value in extra_config.items():
         if isinstance(extra_config_value, dict):
             config_value = config.setdefault(k, {})
-            merge_kubelet_extra_config(config_value, extra_config_value)
+            merge_extra_config(config_value, extra_config_value)
         else:
             config[k] = extra_config_value
 
@@ -1183,7 +1189,7 @@ def configure_kubelet(
     # overrides any config provided by the charm.
     kubelet_extra_config = hookenv.config("kubelet-extra-config")
     kubelet_extra_config = yaml.safe_load(kubelet_extra_config)
-    merge_kubelet_extra_config(kubelet_config, kubelet_extra_config)
+    merge_extra_config(kubelet_config, kubelet_extra_config)
 
     # Render the file and configure Kubelet to use it
     os.makedirs("/root/cdk/kubelet", exist_ok=True)
