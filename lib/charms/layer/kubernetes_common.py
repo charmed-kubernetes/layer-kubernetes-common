@@ -1169,7 +1169,7 @@ def configure_kubelet(
     if kube_version >= (1, 19):
         # NB: required for CIS compliance
         feature_gates["RotateKubeletServerCertificate"] = True
-    if is_state("kubernetes-worker.gpu.enabled"):
+    if is_state("kubernetes-worker.gpu.enabled") and kube_version < (1, 28):
         feature_gates["DevicePlugins"] = True
     if feature_gates:
         kubelet_config["featureGates"] = feature_gates
