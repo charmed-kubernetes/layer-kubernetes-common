@@ -4,4 +4,4 @@ on: [pull_request]
 jobs:
   lint-unit:
     name: Lint Unit
-    uses: charmed-kubernetes/workflows/.github/workflows/lint-unit.yaml@main
+    uses: charmed-kubernetes/workflows/.github/workflows/lint-unit.yaml@6ee58c37d404effad4598ce7b523dbaf0cb99285 # main
