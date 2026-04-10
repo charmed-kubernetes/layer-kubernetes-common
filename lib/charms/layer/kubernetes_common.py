@@ -111,7 +111,7 @@ def retry(times, delay_secs):
 
 def calculate_resource_checksum(resource):
     """Calculate a checksum for a resource"""
-    md5 = hashlib.md5()
+    md5 = hashlib.md5() # nosec B324
     path = hookenv.resource_get(resource)
     if path:
         with open(path, "rb") as f:
@@ -140,7 +140,7 @@ def migrate_resource_checksums(checksum_prefix, snap_resources):
                 # No resource is attached. Previously, this meant no checksum
                 # would be calculated and stored. But now we calculate it as if
                 # it is a 0-byte resource, so let's go ahead and do that.
-                zero_checksum = hashlib.md5().hexdigest()
+                zero_checksum = hashlib.md5().hexdigest() # nosec B324
                 db.set(new_key, zero_checksum)
 
 
