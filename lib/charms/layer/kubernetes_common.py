@@ -248,9 +248,11 @@ def get_service_ip(service, namespace="kube-system", errors_fatal=True):
             raise
         else:
             return None
-    else:
+    if output:
         svc = json.loads(output.decode())
         return svc["spec"]["clusterIP"]
+    else:
+        return None
 
 
 def kubectl(*args):
@@ -258,15 +260,20 @@ def kubectl(*args):
     an error if the command fails."""
     command = ["kubectl", "--kubeconfig=" + kubeclientconfig_path] + list(args)
     hookenv.log("Executing {}".format(command))
-    return check_output(command)
+    if is_state("endpoint.cni.departed") or is_state(
+        "endpoint.container-runtime.departed"
+    ):
+        hookenv.log("Required subordinates are departing; delaying kubectl")
+        return b""
+    else:
+        return check_output(command)
 
 
 def kubectl_success(*args):
     """Runs kubectl with the given args. Returns True if successful, False if
     not."""
     try:
-        kubectl(*args)
-        return True
+        return True if kubectl(*args) else False
     except CalledProcessError:
         return False
 
@@ -860,7 +867,7 @@ def get_secret_names():
         hookenv.log("Unable to get existing secrets", level=hookenv.WARNING)
         return {}
 
-    secrets = json.loads(output)
+    secrets = json.loads(output) if output else {}
     secret_names = {}
     if "items" in secrets:
         for secret in secrets["items"]:
@@ -954,7 +961,7 @@ def get_secret_password(username):
         # Give them nothing!
         return None
 
-    secrets = json.loads(output)
+    secrets = json.loads(output) if output else {}
     if "items" in secrets:
         for secret in secrets["items"]:
             try:
